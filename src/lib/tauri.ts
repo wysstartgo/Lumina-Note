@@ -1,9 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
+import {
+  exists as tauriExists,
+  mkdir,
+  readDir as tauriReadDir,
+  rename as tauriRename,
+} from "@tauri-apps/plugin-fs";
 
 export interface FileEntry {
   name: string;
   path: string;
   is_dir: boolean;
+  isDirectory?: boolean; // Alias
   children: FileEntry[] | null;
 }
 
@@ -50,4 +57,59 @@ export async function renameFile(
   newPath: string
 ): Promise<void> {
   return invoke("rename_file", { oldPath, newPath });
+}
+
+// ============ Additional exports for Agent system ============
+
+/**
+ * Write content to a file (alias for saveFile)
+ */
+export async function writeFile(path: string, content: string): Promise<void> {
+  return saveFile(path, content);
+}
+
+/**
+ * Check if a file or directory exists
+ */
+export async function exists(path: string): Promise<boolean> {
+  return tauriExists(path);
+}
+
+/**
+ * Create a directory
+ */
+export async function createDir(
+  path: string,
+  options?: { recursive?: boolean }
+): Promise<void> {
+  return mkdir(path, { recursive: options?.recursive ?? false });
+}
+
+/**
+ * Read directory contents
+ */
+export async function readDir(
+  path: string,
+  options?: { recursive?: boolean }
+): Promise<FileEntry[]> {
+  // Use our custom list_directory for recursive, or tauri-fs for non-recursive
+  if (options?.recursive) {
+    return listDirectory(path);
+  }
+  
+  const entries = await tauriReadDir(path);
+  return entries.map((entry) => ({
+    name: entry.name,
+    path: `${path}/${entry.name}`,
+    is_dir: entry.isDirectory,
+    isDirectory: entry.isDirectory,
+    children: null,
+  }));
+}
+
+/**
+ * Rename/move a file or directory
+ */
+export async function rename(oldPath: string, newPath: string): Promise<void> {
+  return tauriRename(oldPath, newPath);
 }

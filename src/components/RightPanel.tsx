@@ -20,7 +20,9 @@ import {
   Tag,
   ArrowUpRight,
   ChevronRight,
+  Bot,
 } from "lucide-react";
+import { AgentPanel } from "./AgentPanel";
 
 // Edit suggestion card
 function EditCard({ 
@@ -371,10 +373,9 @@ function OutlineView() {
 export function RightPanel() {
   const { 
     rightPanelTab, 
-    setRightPanelTab 
-  }: { 
-    rightPanelTab: "chat" | "outline" | "backlinks" | "tags"; 
-    setRightPanelTab: (tab: "chat" | "outline" | "backlinks" | "tags") => void; 
+    setRightPanelTab,
+    chatMode,
+    setChatMode,
   } = useUIStore();
   const { 
     messages, 
@@ -383,7 +384,6 @@ export function RightPanel() {
     referencedFiles,
     pendingEdits,
     config,
-    tokenUsage,
     totalTokensUsed,
     sendMessage, 
     clearChat,
@@ -536,10 +536,10 @@ export function RightPanel() {
               ? "text-primary border-b-2 border-primary"
               : "text-muted-foreground hover:text-foreground"
           }`}
-          title="AI 对话"
+          title="AI 助手"
         >
-          <BrainCircuit size={12} />
-          <span className="hidden sm:inline">对话</span>
+          {chatMode === "agent" ? <Bot size={12} /> : <BrainCircuit size={12} />}
+          <span className="hidden sm:inline">AI</span>
         </button>
         <button
           onClick={() => setRightPanelTab("outline")}
@@ -582,18 +582,39 @@ export function RightPanel() {
       {/* Chat Interface */}
       {rightPanelTab === "chat" && (
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Header */}
+          {/* Header with Mode Toggle */}
           <div className="p-2 border-b border-border flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <BrainCircuit size={12} />
-                {config.apiKey ? "已连接" : "未配置"}
+              {/* Mode Toggle */}
+              <div className="flex bg-muted rounded-md p-0.5">
+                <button
+                  onClick={() => setChatMode("agent")}
+                  className={`px-2 py-1 text-xs rounded transition-colors flex items-center gap-1 ${
+                    chatMode === "agent"
+                      ? "bg-background text-primary shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  title="Agent 模式 - 智能任务执行"
+                >
+                  <Bot size={12} />
+                  Agent
+                </button>
+                <button
+                  onClick={() => setChatMode("chat")}
+                  className={`px-2 py-1 text-xs rounded transition-colors flex items-center gap-1 ${
+                    chatMode === "chat"
+                      ? "bg-background text-primary shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  title="对话模式 - 简单问答"
+                >
+                  <BrainCircuit size={12} />
+                  对话
+                </button>
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {config.apiKey ? "✓" : "未配置"}
               </span>
-              {totalTokensUsed > 0 && (
-                <span className="text-xs text-muted-foreground/60">
-                  {totalTokensUsed.toLocaleString()} tokens
-                </span>
-              )}
             </div>
             <div className="flex gap-1">
               <button
@@ -680,6 +701,16 @@ export function RightPanel() {
             </div>
           )}
 
+          {/* Agent Mode */}
+          {chatMode === "agent" && (
+            <div className="flex-1 overflow-hidden">
+              <AgentPanel />
+            </div>
+          )}
+
+          {/* Chat Mode */}
+          {chatMode === "chat" && (
+            <>
           {/* Context indicator - shows which file(s) will be sent to AI */}
           <div className="p-2 border-b border-border">
             <div className="text-xs text-muted-foreground mb-1">上下文:</div>
@@ -825,6 +856,8 @@ export function RightPanel() {
               </div>
             </div>
           </div>
+            </>
+          )}
         </div>
       )}
 

@@ -506,11 +506,20 @@ export function KnowledgeGraph({ className = "" }: KnowledgeGraphProps) {
     clickedNodeRef.current = null;
   };
 
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    setZoom((z) => Math.min(Math.max(z * delta, 0.3), 3));
-  };
+  // 使用原生事件监听器处理 wheel 事件（需要 passive: false 才能 preventDefault）
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      setZoom((z) => Math.min(Math.max(z * delta, 0.3), 3));
+    };
+
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', handleWheel);
+  }, []);
 
   const handleNodeClick = (node: GraphNode) => {
     openFile(node.path);
@@ -687,7 +696,6 @@ export function KnowledgeGraph({ className = "" }: KnowledgeGraphProps) {
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
-          onWheel={handleWheel}
           onDoubleClick={() => {
             if (selectedNode) {
               handleNodeClick(selectedNode);
