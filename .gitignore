@@ -1,0 +1,66 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+dist-ssr/
+
+# Tauri
+src-tauri/target/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Cache
+.vite/
+*.cache
+.eslintcache
+
+# Test
+coverage/
+
+# Misc
+*.local
+
+# ===================
+# 本地调试文件（不提交）
+# ===================
+
+# 旧 README
+README-1.md
+
+# 参考设计文档
+界面参考设计.md
+实时预览样式参考.md
+
+# 开发笔记
+开发todo.md
+
+# 测试用的示例笔记
+二重积分区域合并.md
+数列极限与复合函数性质判定.md
+知识图谱.md
+
+# 其他用户笔记（可选）
+# *.md
+# !README.md
