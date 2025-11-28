@@ -146,12 +146,18 @@ lumina-note/
 - [x] AI Agent 系统
 - [x] RAG 语义搜索
 - [x] AI 悬浮球
-- [ ] 流式响应
+- [x] 流式响应
 - [ ] 历史会话持久化
 - [ ] 插件系统
 
 ---
 
+## 🙏 致谢
+
+本项目的 Agent 系统和流式传输架构参考了 [Roo-Code](https://github.com/RooVetGit/Roo-Code) 的部分代码实现，特此感谢。
+
+---
+
 ## 📄 License
 
-MIT © 2024 Lumina Note
+Apache License 2.0 © 2024 Lumina Note
