@@ -262,6 +262,105 @@ pub async fn seek_video_time(app: AppHandle, seconds: f64) -> Result<(), AppErro
     Ok(())
 }
 
+/// 在 B站弹幕输入框中填充前缀（仅当输入框为空时）
+#[tauri::command]
+pub async fn fill_danmaku_prefix(app: AppHandle, prefix: String) -> Result<(), AppError> {
+    if let Some(webview) = app.get_webview("video-webview") {
+        let js = format!(
+            r#"
+            (function() {{
+                // 尝试多种选择器
+                const selectors = [
+                    '.bpx-player-dm-input',
+                    '.bpx-player-sending-area input',
+                    '.bilibili-player-video-danmaku-input input',
+                    'input[placeholder*="发个友善的弹幕"]',
+                    'input[placeholder*="弹幕"]'
+                ];
+                
+                for (const sel of selectors) {{
+                    const input = document.querySelector(sel);
+                    if (input) {{
+                        // 只有当输入框为空时才填充
+                        if (!input.value || input.value.trim() === '') {{
+                            input.focus();
+                            input.value = '{}';
+                            // 触发 input 事件
+                            input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                            console.log('[LuminaNote] 已填充前缀:', '{}');
+                        }} else {{
+                            console.log('[LuminaNote] 输入框非空，跳过填充');
+                        }}
+                        return;
+                    }}
+                }}
+                console.log('[LuminaNote] 未找到弹幕输入框');
+            }})();
+            "#,
+            prefix, prefix
+        );
+        webview.eval(&js).map_err(|e| AppError::InvalidPath(e.to_string()))?;
+    }
+    Ok(())
+}
+
+/// 监听弹幕输入框，为空时自动填充前缀
+#[tauri::command]
+pub async fn setup_danmaku_autofill(app: AppHandle, prefix: String) -> Result<(), AppError> {
+    if let Some(webview) = app.get_webview("video-webview") {
+        let js = format!(
+            r#"
+            (function() {{
+                const prefix = '{}';
+                
+                // 移除旧的监听器
+                if (window._luminaAutofillObserver) {{
+                    window._luminaAutofillObserver.disconnect();
+                }}
+                
+                // 定期检查输入框
+                const checkAndFill = () => {{
+                    const selectors = [
+                        '.bpx-player-dm-input',
+                        '.bpx-player-sending-area input',
+                        'input[placeholder*="发个友善的弹幕"]',
+                        'input[placeholder*="弹幕"]'
+                    ];
+                    
+                    for (const sel of selectors) {{
+                        const input = document.querySelector(sel);
+                        if (input && (!input.value || input.value.trim() === '')) {{
+                            input.value = prefix;
+                            input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                            console.log('[LuminaNote] 自动填充前缀');
+                            return true;
+                        }}
+                    }}
+                    return false;
+                }};
+                
+                // 监听焦点事件
+                document.addEventListener('focusin', (e) => {{
+                    if (e.target && e.target.tagName === 'INPUT') {{
+                        const placeholder = e.target.placeholder || '';
+                        if (placeholder.includes('弹幕') && (!e.target.value || e.target.value.trim() === '')) {{
+                            e.target.value = prefix;
+                            e.target.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                            console.log('[LuminaNote] 焦点时自动填充');
+                        }}
+                    }}
+                }});
+                
+                console.log('[LuminaNote] 弹幕自动填充已启用，前缀:', prefix);
+            }})();
+            "#,
+            prefix
+        );
+        webview.eval(&js).map_err(|e| AppError::InvalidPath(e.to_string()))?;
+    }
+    Ok(())
+}
+
 /// 打开视频播放窗口（独立窗口备用）
 #[tauri::command]
 pub async fn open_video_window(app: AppHandle, url: String) -> Result<(), AppError> {

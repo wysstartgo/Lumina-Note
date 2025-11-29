@@ -69,7 +69,7 @@ export function VideoNoteView({ onClose }: VideoNoteViewProps) {
   const [isEditingTime, setIsEditingTime] = useState(false);
   
   // 弹幕同步状态
-  const [danmakuPrefix, setDanmakuPrefix] = useState('#');
+  const [danmakuPrefix, setDanmakuPrefix] = useState('NOTE:');
   const [isSyncingDanmaku, setIsSyncingDanmaku] = useState(false);
   
   // 内嵌 WebView 状态
@@ -91,12 +91,22 @@ export function VideoNoteView({ onClose }: VideoNoteViewProps) {
         height: rect.height
       });
       setWebviewCreated(true);
-      console.log('[VideoNote] WebView 创建成功', rect);
+      console.log('[VideoNote] WebView 创建成功');
+      
+      // 延迟启用自动填充（等待 B站页面加载）
+      setTimeout(async () => {
+        try {
+          await invoke('setup_danmaku_autofill', { prefix: danmakuPrefix });
+          console.log('[VideoNote] 弹幕自动填充已启用');
+        } catch (e) {
+          console.error('[VideoNote] 启用自动填充失败:', e);
+        }
+      }, 3000);
     } catch (error) {
       console.error('[VideoNote] WebView 创建失败:', error);
       // 失败时可以 fallback 到 iframe
     }
-  }, [noteFile]);
+  }, [noteFile, danmakuPrefix]);
 
   // 更新 WebView 大小
   const updateWebviewBounds = useCallback(async () => {
@@ -652,11 +662,15 @@ export function VideoNoteView({ onClose }: VideoNoteViewProps) {
                 value={danmakuPrefix}
                 onChange={(e) => setDanmakuPrefix(e.target.value)}
                 className="w-16 px-2 py-1 bg-muted border border-border rounded text-center font-mono"
-                placeholder="#"
+                placeholder="NOTE:"
               />
-              <span className="text-muted-foreground">
-                发送: <code className="px-1 bg-orange-500/20 text-orange-600 rounded">{danmakuPrefix}笔记</code>
-              </span>
+              <button
+                onClick={() => invoke('fill_danmaku_prefix', { prefix: danmakuPrefix })}
+                className="px-2 py-1 bg-blue-500/20 text-blue-600 hover:bg-blue-500/30 rounded transition-colors"
+                title="自动填充前缀到弹幕输入框"
+              >
+                📝 填充
+              </button>
             </div>
           </div>
           

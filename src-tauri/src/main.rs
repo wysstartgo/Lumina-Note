@@ -34,6 +34,8 @@ fn main() {
             commands::get_bilibili_cid,
             commands::get_bilibili_danmaku,
             commands::seek_video_time,
+            commands::fill_danmaku_prefix,
+            commands::setup_danmaku_autofill,
             // Vector DB commands
             vector_db::init_vector_db,
             vector_db::upsert_vector_chunks,
