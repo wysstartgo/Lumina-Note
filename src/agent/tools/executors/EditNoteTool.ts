@@ -3,8 +3,9 @@
  */
 
 import { ToolExecutor, ToolResult, ToolContext } from "../../types";
-import { readFile, writeFile } from "@/lib/tauri";
+import { readFile } from "@/lib/tauri";
 import { join } from "@/lib/path";
+import { useAIStore } from "@/stores/useAIStore";
 
 interface EditOperation {
   search: string;
@@ -13,7 +14,7 @@ interface EditOperation {
 
 export const EditNoteTool: ToolExecutor = {
   name: "edit_note",
-  requiresApproval: true, // 写操作，需要审批
+  requiresApproval: false, // 通过 DiffView 确认，不需要单独审批
 
   async execute(
     params: Record<string, unknown>,
@@ -41,6 +42,9 @@ export const EditNoteTool: ToolExecutor = {
     try {
       const fullPath = join(context.workspacePath, path);
       let content = await readFile(fullPath);
+      
+      // 保存原始内容用于实时预览
+      const oldContent = content;
 
       const appliedEdits: string[] = [];
       const failedEdits: string[] = [];
@@ -74,12 +78,22 @@ export const EditNoteTool: ToolExecutor = {
       }
 
       if (appliedEdits.length > 0) {
-        // 写入文件
-        await writeFile(fullPath, content);
+        // 不直接写入文件，通过 DiffView 让用户确认
+        const fileName = path.split(/[/\\]/).pop() || path;
+        
+        // 设置 pendingDiff，复用 Chat 模式的 DiffView
+        const { setPendingDiff } = useAIStore.getState();
+        setPendingDiff({
+          fileName,
+          filePath: fullPath,
+          original: oldContent,
+          modified: content,
+          description: `Agent 编辑: ${appliedEdits.length} 处修改`,
+        });
 
         const summary = [
           `文件: ${path}`,
-          `成功应用: ${appliedEdits.length} 处修改`,
+          `已生成 ${appliedEdits.length} 处修改，等待用户在 Diff 预览中确认`,
           ...appliedEdits,
         ];
 
@@ -89,7 +103,7 @@ export const EditNoteTool: ToolExecutor = {
 
         return {
           success: true,
-          content: summary.join("\n"),
+          content: summary.join("\n") + "\n\n⚠️ 修改尚未保存，请用户在编辑器中查看 Diff 预览并确认。",
         };
       } else {
         return {

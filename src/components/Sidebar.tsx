@@ -293,7 +293,7 @@ function FileTreeItem({
   onRenameSubmit,
   onRenameCancel,
 }: FileTreeItemProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const isActive = currentFile === entry.path;
   const isRenaming = renamingPath === entry.path;
   const paddingLeft = 12 + level * 16;

@@ -45,29 +45,27 @@ function EditorWithGraph() {
 // Component that shows diff view
 function DiffViewWrapper() {
   const { pendingDiff, setPendingDiff, clearPendingEdits } = useAIStore();
-  const { updateContent, currentFile } = useFileStore();
+  const { openFile } = useFileStore();
   
   const handleAccept = useCallback(async () => {
     if (!pendingDiff) return;
     
     try {
-      // Update content in editor (with undo support)
-      if (currentFile === pendingDiff.filePath) {
-        updateContent(pendingDiff.modified, "ai", pendingDiff.description);
-      }
-      
-      // Save to file
+      // Save to file first
       await saveFile(pendingDiff.filePath, pendingDiff.modified);
       
       // Clear the diff and pending edits
       clearPendingEdits();
+      
+      // Refresh the file in editor (forceReload = true)
+      await openFile(pendingDiff.filePath, false, true);
       
       console.log(`✅ 已应用修改到 ${pendingDiff.fileName}`);
     } catch (error) {
       console.error("Failed to apply edit:", error);
       alert(`❌ 应用修改失败: ${error}`);
     }
-  }, [pendingDiff, currentFile, updateContent, clearPendingEdits]);
+  }, [pendingDiff, clearPendingEdits, openFile]);
   
   const handleReject = useCallback(() => {
     setPendingDiff(null);

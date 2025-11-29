@@ -56,7 +56,7 @@ interface FileState {
   // Actions
   setVaultPath: (path: string) => Promise<void>;
   refreshFileTree: () => Promise<void>;
-  openFile: (path: string, addToHistory?: boolean) => Promise<void>;
+  openFile: (path: string, addToHistory?: boolean, forceReload?: boolean) => Promise<void>;
   updateContent: (content: string, source?: "user" | "ai", description?: string) => void;
   save: () => Promise<void>;
   closeFile: () => void;
@@ -150,14 +150,40 @@ export const useFileStore = create<FileState>()(
   },
 
   // Open a file
-  openFile: async (path: string, addToHistory: boolean = true) => {
+  openFile: async (path: string, addToHistory: boolean = true, forceReload: boolean = false) => {
     const { tabs, activeTabIndex, navigationHistory, navigationIndex } = get();
 
     // 检查是否已经在标签页中打开
     const existingTabIndex = tabs.findIndex(tab => tab.path === path);
     if (existingTabIndex !== -1) {
-      // 已有此标签页，直接切换
-      get().switchTab(existingTabIndex);
+      // 已有此标签页
+      if (forceReload) {
+        // 强制重新加载内容（Agent 编辑后使用）
+        try {
+          const newContent = await readFile(path);
+          const updatedTabs = [...tabs];
+          updatedTabs[existingTabIndex] = {
+            ...updatedTabs[existingTabIndex],
+            content: newContent,
+            isDirty: false,
+          };
+          set({
+            tabs: updatedTabs,
+            activeTabIndex: existingTabIndex,
+            currentFile: path,
+            currentContent: newContent,
+            isDirty: false,
+            lastSavedContent: newContent,
+          });
+        } catch (error) {
+          console.error("Failed to reload file:", error);
+          // 即使重载失败也切换到该标签页
+          get().switchTab(existingTabIndex);
+        }
+      } else {
+        // 直接切换
+        get().switchTab(existingTabIndex);
+      }
       return;
     }
 

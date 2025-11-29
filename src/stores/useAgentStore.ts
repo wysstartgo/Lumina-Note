@@ -90,32 +90,51 @@ export const useAgentStore = create<AgentState>()(
   persist(
     (set, get) => {
       // 监听 Agent Loop 状态变化
+      let cleanupListeners: (() => void)[] = [];
+      
       const setupListeners = () => {
+        // 先清理旧的监听器
+        cleanupListeners.forEach(cleanup => cleanup());
+        cleanupListeners = [];
+        
         const loop = getAgentLoop();
         
-        loop.on("status_change", () => {
-          get()._updateFromLoop();
-        });
+        cleanupListeners.push(
+          loop.on("status_change", () => {
+            get()._updateFromLoop();
+          })
+        );
 
-        loop.on("message", () => {
-          get()._updateFromLoop();
-        });
+        cleanupListeners.push(
+          loop.on("message", () => {
+            get()._updateFromLoop();
+          })
+        );
 
-        loop.on("tool_call", () => {
-          get()._updateFromLoop();
-        });
+        cleanupListeners.push(
+          loop.on("tool_call", () => {
+            get()._updateFromLoop();
+          })
+        );
 
-        loop.on("complete", () => {
-          get()._updateFromLoop();
-        });
+        cleanupListeners.push(
+          loop.on("complete", () => {
+            get()._updateFromLoop();
+          })
+        );
 
-        loop.on("error", () => {
-          get()._updateFromLoop();
-        });
+        cleanupListeners.push(
+          loop.on("error", () => {
+            get()._updateFromLoop();
+          })
+        );
       };
 
       // 延迟初始化监听器
       setTimeout(setupListeners, 0);
+      
+      // 导出 setupListeners 供 resetAgentLoop 后重新调用
+      (globalThis as any).__agentSetupListeners = setupListeners;
 
       const now = Date.now();
       const defaultSessionId = `agent-${now}`;
@@ -155,6 +174,8 @@ export const useAgentStore = create<AgentState>()(
         createSession: (title) => {
           // 重置 AgentLoop，防止旧消息污染新会话
           resetAgentLoop();
+          // 重新设置监听器
+          (globalThis as any).__agentSetupListeners?.();
           
           const id = `agent-${Date.now()}`;
           const createdAt = Date.now();
@@ -206,6 +227,8 @@ export const useAgentStore = create<AgentState>()(
         switchSession: (id) => {
           // 重置 AgentLoop 以清除旧会话的状态
           resetAgentLoop();
+          // 重新设置监听器
+          (globalThis as any).__agentSetupListeners?.();
           
           set((state) => {
             const session = state.sessions.find((s) => s.id === id);
@@ -334,6 +357,8 @@ export const useAgentStore = create<AgentState>()(
         // 清空聊天
         clearChat: () => {
           resetAgentLoop();
+          // 重新设置监听器
+          (globalThis as any).__agentSetupListeners?.();
           set((state) => ({
             status: "idle",
             messages: [],

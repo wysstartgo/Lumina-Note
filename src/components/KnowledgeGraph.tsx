@@ -23,12 +23,31 @@ interface GraphNode {
   vy: number;
   connections: number;
   isDragging?: boolean;
+  isFolder?: boolean;        // 是否是文件夹
+  parentId?: string;         // 父节点 ID
+  color?: string;            // 节点颜色（来自所属文件夹）
+  depth?: number;            // 层级深度
 }
 
 interface GraphEdge {
   source: string;
   target: string;
+  type: 'link' | 'hierarchy'; // link = 双链, hierarchy = 父子关系
 }
+
+// 预定义的文件夹颜色调色板
+const FOLDER_COLORS = [
+  'hsl(200, 80%, 55%)',  // 蓝色
+  'hsl(340, 75%, 55%)',  // 粉红
+  'hsl(160, 70%, 45%)',  // 绿色
+  'hsl(280, 65%, 55%)',  // 紫色
+  'hsl(35, 85%, 55%)',   // 橙色
+  'hsl(180, 70%, 45%)',  // 青色
+  'hsl(60, 75%, 50%)',   // 黄色
+  'hsl(320, 70%, 55%)',  // 洋红
+  'hsl(100, 65%, 45%)',  // 草绿
+  'hsl(220, 75%, 60%)',  // 靛蓝
+];
 
 // Extract [[wikilinks]] from content
 export function extractWikiLinks(content: string): string[] {
@@ -183,15 +202,63 @@ export function KnowledgeGraph({ className = "" }: KnowledgeGraphProps) {
     const nodes: GraphNode[] = [];
     const edges: GraphEdge[] = [];
     const nodeMap = new Map<string, GraphNode>();
+    const folderColorMap = new Map<string, string>(); // 文件夹路径 -> 颜色
+    let colorIndex = 0;
 
-    // Recursive function to process files
-    const processFiles = (entries: typeof fileTree) => {
+    // 递归处理文件树，同时创建文件夹节点和父子关系
+    const processEntries = (entries: typeof fileTree, parentPath: string | null, depth: number) => {
       for (const entry of entries) {
         if (entry.is_dir && entry.children) {
-          processFiles(entry.children);
+          // 为文件夹分配颜色
+          const folderColor = FOLDER_COLORS[colorIndex % FOLDER_COLORS.length];
+          folderColorMap.set(entry.path, folderColor);
+          colorIndex++;
+
+          // 创建文件夹节点
+          const folderId = `folder:${entry.path}`;
+          const folderNode: GraphNode = {
+            id: folderId,
+            label: entry.name,
+            path: entry.path,
+            x: 0,
+            y: 0,
+            vx: 0,
+            vy: 0,
+            connections: 0,
+            isFolder: true,
+            parentId: parentPath ? `folder:${parentPath}` : undefined,
+            color: folderColor,
+            depth,
+          };
+          nodes.push(folderNode);
+          nodeMap.set(folderId, folderNode);
+
+          // 创建父子关系边（如果有父文件夹）
+          if (parentPath) {
+            edges.push({
+              source: `folder:${parentPath}`,
+              target: folderId,
+              type: 'hierarchy',
+            });
+          }
+
+          // 递归处理子项
+          processEntries(entry.children, entry.path, depth + 1);
         } else if (!entry.is_dir && entry.name.endsWith(".md")) {
+          // 文件节点
           const nodeName = entry.name.replace(".md", "");
-          const node: GraphNode = {
+          
+          // 获取文件所在文件夹的颜色（子层覆盖父层）
+          let nodeColor = 'hsl(var(--muted-foreground))';
+          
+          // 查找最近的父文件夹颜色
+          for (const [folderPath, color] of folderColorMap.entries()) {
+            if (entry.path.startsWith(folderPath)) {
+              nodeColor = color;
+            }
+          }
+
+          const fileNode: GraphNode = {
             id: nodeName,
             label: nodeName,
             path: entry.path,
@@ -200,35 +267,50 @@ export function KnowledgeGraph({ className = "" }: KnowledgeGraphProps) {
             vx: 0,
             vy: 0,
             connections: 0,
+            isFolder: false,
+            parentId: parentPath ? `folder:${parentPath}` : undefined,
+            color: nodeColor,
+            depth,
           };
-          nodes.push(node);
-          nodeMap.set(nodeName.toLowerCase(), node);
+          nodes.push(fileNode);
+          nodeMap.set(nodeName.toLowerCase(), fileNode);
+
+          // 创建文件到父文件夹的父子关系边
+          if (parentPath) {
+            edges.push({
+              source: `folder:${parentPath}`,
+              target: nodeName,
+              type: 'hierarchy',
+            });
+          }
         }
       }
     };
 
-    processFiles(fileTree);
+    processEntries(fileTree, null, 0);
 
-    // Now read each file to extract links
-    // For performance, we'll do this asynchronously
+    // 读取文件内容，提取双链
     const { readFile } = await import("@/lib/tauri");
     
     for (const node of nodes) {
+      if (node.isFolder) continue; // 跳过文件夹
+      
       try {
         const content = await readFile(node.path);
         const links = extractWikiLinks(content);
         
         for (const linkName of links) {
           const targetNode = nodeMap.get(linkName.toLowerCase());
-          if (targetNode && targetNode.id !== node.id) {
-            // Check if edge already exists
+          if (targetNode && targetNode.id !== node.id && !targetNode.isFolder) {
+            // 检查双链边是否已存在
             const exists = edges.some(
               (e) =>
-                (e.source === node.id && e.target === targetNode.id) ||
-                (e.source === targetNode.id && e.target === node.id)
+                e.type === 'link' &&
+                ((e.source === node.id && e.target === targetNode.id) ||
+                (e.source === targetNode.id && e.target === node.id))
             );
             if (!exists) {
-              edges.push({ source: node.id, target: targetNode.id });
+              edges.push({ source: node.id, target: targetNode.id, type: 'link' });
               node.connections++;
               targetNode.connections++;
             }
@@ -316,33 +398,63 @@ export function KnowledgeGraph({ className = "" }: KnowledgeGraphProps) {
         (hoverNode && (u.id === hoverNode || v.id === hoverNode)) ||
         (selectedNode && (u.id === selectedNode.id || v.id === selectedNode.id));
 
+      const isHierarchy = edge.type === 'hierarchy';
+
       ctx.beginPath();
       ctx.moveTo(u.x, u.y);
       ctx.lineTo(v.x, v.y);
 
       if (hasSelection) {
         if (isHighlighted) {
-          ctx.strokeStyle = "hsl(var(--primary))";
+          ctx.strokeStyle = isHierarchy ? (u.color || "hsl(var(--primary))") : "hsl(var(--primary))";
           ctx.globalAlpha = 0.8;
-          ctx.lineWidth = 2 / zoom;
+          ctx.lineWidth = (isHierarchy ? 2.5 : 2) / zoom;
         } else {
           ctx.strokeStyle = "hsl(var(--muted-foreground))";
           ctx.globalAlpha = 0.1;
           ctx.lineWidth = 1 / zoom;
         }
       } else {
-        ctx.strokeStyle = "hsl(var(--muted-foreground))";
-        ctx.globalAlpha = 0.4;
-        ctx.lineWidth = 1 / zoom;
+        if (isHierarchy) {
+          ctx.strokeStyle = u.color || "hsl(var(--muted-foreground))";
+          ctx.globalAlpha = 0.5;
+          ctx.lineWidth = 1.5 / zoom;
+        } else {
+          ctx.strokeStyle = "hsl(var(--muted-foreground))";
+          ctx.globalAlpha = 0.4;
+          ctx.lineWidth = 1 / zoom;
+        }
       }
       ctx.stroke();
+
+      // 绘制箭头（仅层级边）
+      if (isHierarchy) {
+        const angle = Math.atan2(v.y - u.y, v.x - u.x);
+        const arrowLen = 8 / zoom;
+        const targetRadius = v.isFolder ? 12 : 8;
+        const arrowX = v.x - Math.cos(angle) * (targetRadius + 2);
+        const arrowY = v.y - Math.sin(angle) * (targetRadius + 2);
+
+        ctx.beginPath();
+        ctx.moveTo(arrowX, arrowY);
+        ctx.lineTo(
+          arrowX - arrowLen * Math.cos(angle - Math.PI / 6),
+          arrowY - arrowLen * Math.sin(angle - Math.PI / 6)
+        );
+        ctx.moveTo(arrowX, arrowY);
+        ctx.lineTo(
+          arrowX - arrowLen * Math.cos(angle + Math.PI / 6),
+          arrowY - arrowLen * Math.sin(angle + Math.PI / 6)
+        );
+        ctx.stroke();
+      }
     });
 
     // Draw nodes
     nodesRef.current.forEach((node) => {
       const isHovered = node.id === hoverNode;
       const isSelected = selectedNode && node.id === selectedNode.id;
-      const isCurrent = currentFile?.includes(node.label);
+      const isCurrent = !node.isFolder && currentFile?.includes(node.label);
 
       let isNeighbor = false;
       const targetId = hoverNode || (selectedNode ? selectedNode.id : null);
@@ -359,34 +471,73 @@ export function KnowledgeGraph({ className = "" }: KnowledgeGraphProps) {
       ctx.globalAlpha = hasSelection && !isHighlighted ? 0.15 : 1;
 
       // 使用对数缩放，限制最大尺寸
-      const baseRadius = Math.max(4, 5 + Math.log(node.connections + 1) * 4);
-      const radius = Math.min(baseRadius * nodeSize, 25); // 最大 25px
+      const baseRadius = node.isFolder 
+        ? Math.max(8, 10 + Math.log((node.connections || 1) + 1) * 3)
+        : Math.max(4, 5 + Math.log(node.connections + 1) * 4);
+      const radius = Math.min(baseRadius * nodeSize, node.isFolder ? 30 : 25);
 
-      // Node color
-      ctx.beginPath();
-      ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
-      
+      // 确定节点颜色
+      let nodeColor = node.color || "hsl(var(--muted-foreground))";
       if (isCurrent) {
-        ctx.fillStyle = "hsl(var(--primary))";
-      } else if (isHighlighted) {
-        ctx.fillStyle = "hsl(var(--primary) / 0.8)";
-      } else {
-        ctx.fillStyle = "hsl(var(--muted-foreground))";
+        nodeColor = "hsl(var(--primary))";
+      } else if (isHighlighted && !node.isFolder) {
+        // 高亮时稍微调亮
+        nodeColor = node.color || "hsl(var(--primary) / 0.8)";
       }
-      ctx.fill();
 
-      // Node border
-      if (isHighlighted) {
-        ctx.strokeStyle = "hsl(var(--primary))";
-        ctx.lineWidth = 2 / zoom;
+      if (node.isFolder) {
+        // 绘制带刺圆球（星形/太阳形）
+        const spikes = 8;
+        const outerRadius = radius;
+        const innerRadius = radius * 0.6;
+
+        ctx.beginPath();
+        for (let i = 0; i < spikes * 2; i++) {
+          const r = i % 2 === 0 ? outerRadius : innerRadius;
+          const angle = (i * Math.PI) / spikes - Math.PI / 2;
+          const x = node.x + Math.cos(angle) * r;
+          const y = node.y + Math.sin(angle) * r;
+          if (i === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+        ctx.closePath();
+        ctx.fillStyle = nodeColor;
+        ctx.fill();
+
+        // 文件夹节点边框
+        ctx.strokeStyle = isHighlighted ? "hsl(var(--foreground))" : nodeColor;
+        ctx.lineWidth = (isHighlighted ? 2.5 : 1.5) / zoom;
         ctx.stroke();
+
+        // 中心小圆
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, innerRadius * 0.5, 0, 2 * Math.PI);
+        ctx.fillStyle = "hsl(var(--background))";
+        ctx.fill();
+      } else {
+        // 普通文件节点 - 圆形
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
+        ctx.fillStyle = nodeColor;
+        ctx.fill();
+
+        // Node border
+        if (isHighlighted) {
+          ctx.strokeStyle = "hsl(var(--foreground))";
+          ctx.lineWidth = 2 / zoom;
+          ctx.stroke();
+        }
       }
 
       // Label
       if (showLabels && (isHighlighted || zoom > 0.8)) {
         ctx.globalAlpha = isHighlighted ? 1 : (hasSelection ? 0.15 : 0.7);
         ctx.fillStyle = "hsl(var(--foreground))";
-        ctx.font = `${Math.max(10, 12 / zoom)}px -apple-system, BlinkMacSystemFont, sans-serif`;
+        const fontSize = node.isFolder ? Math.max(11, 13 / zoom) : Math.max(10, 12 / zoom);
+        ctx.font = `${node.isFolder ? 'bold ' : ''}${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
         ctx.textAlign = "center";
         ctx.fillText(node.label, node.x, node.y + radius + 14 / zoom);
       }
@@ -491,8 +642,8 @@ export function KnowledgeGraph({ className = "" }: KnowledgeGraphProps) {
   };
 
   const handleMouseUp = () => {
-    // 如果点击了节点且没有拖拽，则打开笔记
-    if (clickedNodeRef.current && !hasDragged.current) {
+    // 如果点击了节点且没有拖拽，则打开笔记（文件夹节点不打开）
+    if (clickedNodeRef.current && !hasDragged.current && !clickedNodeRef.current.isFolder) {
       openFile(clickedNodeRef.current.path);
     }
     
@@ -522,7 +673,9 @@ export function KnowledgeGraph({ className = "" }: KnowledgeGraphProps) {
   }, []);
 
   const handleNodeClick = (node: GraphNode) => {
-    openFile(node.path);
+    if (!node.isFolder) {
+      openFile(node.path);
+    }
   };
 
   // Get connected nodes for selected node
