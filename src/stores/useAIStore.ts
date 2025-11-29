@@ -31,6 +31,40 @@ export interface TokenUsage {
   total: number;
 }
 
+interface ChatSession {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messages: Message[];
+}
+
+function generateSessionTitleFromMessages(messages: Message[], fallback: string = "新对话"): string {
+  const firstUser = messages.find((m) => m.role === "user");
+  if (!firstUser || !firstUser.content) return fallback;
+  const raw = firstUser.content.replace(/\s+/g, " ").trim();
+  if (!raw) return fallback;
+  const maxLen = 20;
+  return raw.length > maxLen ? `${raw.slice(0, maxLen)}...` : raw;
+}
+
+function generateTitleFromAssistantContent(content: string, fallback: string = "新对话"): string {
+  if (!content) return fallback;
+  // 去掉思维标签等包裹内容
+  const cleaned = content
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/<thinking>[\s\S]*?<\/thinking>/g, "")
+    .replace(/[#>*\-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return fallback;
+  const firstSentenceEnd = cleaned.search(/[。.!？?]/);
+  const base = firstSentenceEnd > 0 ? cleaned.slice(0, firstSentenceEnd) : cleaned;
+  const maxLen = 20;
+  const result = base.length > maxLen ? `${base.slice(0, maxLen)}...` : base;
+  return result || fallback;
+}
+
 interface AIState {
   // Config
   config: AIConfig;
@@ -40,6 +74,12 @@ interface AIState {
   messages: Message[];
   isLoading: boolean;
   error: string | null;
+  sessions: ChatSession[];
+  currentSessionId: string | null;
+  createSession: (title?: string) => void;
+  deleteSession: (id: string) => void;
+  switchSession: (id: string) => void;
+  renameSession: (id: string, title: string) => void;
   
   // Streaming
   isStreaming: boolean;
@@ -85,6 +125,61 @@ export const useAIStore = create<AIState>()(
       messages: [],
       isLoading: false,
       error: null,
+  sessions: [],
+  currentSessionId: null,
+            // Session management
+            createSession: (title) => {
+              const createdAt = Date.now();
+              const id = `chat-${createdAt}`;
+              const session: ChatSession = {
+                id,
+                title: title || "新对话",
+                createdAt,
+                updatedAt: createdAt,
+                messages: [],
+              };
+              set((state) => ({
+                sessions: [...state.sessions, session],
+                currentSessionId: id,
+                messages: [],
+              }));
+            },
+
+            deleteSession: (id) => {
+              set((state) => {
+                const sessions = state.sessions.filter((s) => s.id !== id);
+                let currentSessionId = state.currentSessionId;
+                if (currentSessionId === id) {
+                  currentSessionId = sessions[0]?.id ?? null;
+                }
+                const current = sessions.find((s) => s.id === currentSessionId) || null;
+                return {
+                  sessions,
+                  currentSessionId,
+                  messages: current?.messages ?? [],
+                };
+              });
+            },
+
+            switchSession: (id) => {
+              set((state) => {
+                const session = state.sessions.find((s) => s.id === id);
+                if (!session) return state;
+                return {
+                  ...state,
+                  currentSessionId: id,
+                  messages: session.messages,
+                };
+              });
+            },
+
+            renameSession: (id, title) => {
+              set((state) => ({
+                sessions: state.sessions.map((s) =>
+                  s.id === id ? { ...s, title } : s
+                ),
+              }));
+            },
       
       // Streaming state
       isStreaming: false,
@@ -133,7 +228,7 @@ export const useAIStore = create<AIState>()(
 
       // Send message
       sendMessage: async (content, currentFile) => {
-        const { messages, referencedFiles, config } = get();
+        const { messages, referencedFiles, config, currentSessionId } = get();
 
         if (!config.apiKey) {
           set({ error: "请先在设置中配置 API Key" });
@@ -145,10 +240,30 @@ export const useAIStore = create<AIState>()(
         
         // Add user message
         const userMessage: Message = { role: "user", content };
-        set({
-          messages: [...messages, userMessage],
-          isLoading: true,
-          error: null,
+
+        // 确保有当前会话
+        if (!currentSessionId) {
+          get().createSession();
+        }
+
+        set((state) => {
+          const newMessages = [...messages, userMessage];
+          const newTitle = generateSessionTitleFromMessages(newMessages, "新对话");
+          return {
+            messages: newMessages,
+            isLoading: true,
+            error: null,
+            sessions: state.sessions.map((s) =>
+              s.id === state.currentSessionId
+                ? {
+                    ...s,
+                    title: s.title === "新对话" ? newTitle : s.title,
+                    messages: newMessages,
+                    updatedAt: Date.now(),
+                  }
+                : s
+            ),
+          };
         });
 
         try {
@@ -190,13 +305,28 @@ export const useAIStore = create<AIState>()(
           } : { prompt: 0, completion: 0, total: 0 };
 
           // Add assistant message and update tokens
-          set((state) => ({
-            messages: [...state.messages, { role: "assistant" as const, content: response.content }],
-            pendingEdits: edits.length > 0 ? edits : state.pendingEdits,
-            tokenUsage: newUsage,
-            totalTokensUsed: state.totalTokensUsed + newUsage.total,
-            isLoading: false,
-          }));
+          set((state) => {
+            const assistantMessage: Message = { role: "assistant", content: response.content };
+            const newMessages = [...state.messages, assistantMessage];
+            const newTitle = generateTitleFromAssistantContent(response.content, "新对话");
+            return {
+              messages: newMessages,
+              pendingEdits: edits.length > 0 ? edits : state.pendingEdits,
+              tokenUsage: newUsage,
+              totalTokensUsed: state.totalTokensUsed + newUsage.total,
+              isLoading: false,
+              sessions: state.sessions.map((s) =>
+                s.id === state.currentSessionId
+                  ? {
+                      ...s,
+                      title: s.title === "新对话" ? newTitle : s.title,
+                      messages: newMessages,
+                      updatedAt: Date.now(),
+                    }
+                  : s
+              ),
+            };
+          });
           
           // Auto-show diff after a short delay (to avoid render issues)
           if (edits.length > 0 && filesToSend.length > 0) {
@@ -248,22 +378,41 @@ export const useAIStore = create<AIState>()(
 
       // 流式发送消息
       sendMessageStream: async (content, currentFile) => {
-        const { messages, referencedFiles, config } = get();
+        const { messages, referencedFiles, config, currentSessionId } = get();
+
+        // Add user message
+        const userMessage: Message = { role: "user", content };
+
+        if (!currentSessionId) {
+          get().createSession();
+        }
+
+        set((state) => {
+          const newMessages = [...messages, userMessage];
+          const newTitle = generateSessionTitleFromMessages(newMessages, "新对话");
+          return {
+            messages: newMessages,
+            isStreaming: true,
+            streamingContent: "",
+            streamingReasoning: "",
+            error: null,
+            sessions: state.sessions.map((s) =>
+              s.id === state.currentSessionId
+                ? {
+                    ...s,
+                    title: s.title === "新对话" ? newTitle : s.title,
+                    messages: newMessages,
+                    updatedAt: Date.now(),
+                  }
+                : s
+            ),
+          };
+        });
 
         if (!config.apiKey && config.provider !== "ollama") {
           set({ error: "请先在设置中配置 API Key" });
           return;
         }
-
-        // Add user message
-        const userMessage: Message = { role: "user", content };
-        set({
-          messages: [...messages, userMessage],
-          isStreaming: true,
-          streamingContent: "",
-          streamingReasoning: "",
-          error: null,
-        });
 
         try {
           // Prepare files
@@ -323,12 +472,27 @@ export const useAIStore = create<AIState>()(
             ? `<thinking>\n${fullReasoning}\n</thinking>\n\n${fullContent}`
             : fullContent;
 
-          set((state) => ({
-            messages: [...state.messages, { role: "assistant" as const, content: finalContent }],
-            isStreaming: false,
-            streamingContent: "",
-            streamingReasoning: "",
-          }));
+          set((state) => {
+            const assistantMessage: Message = { role: "assistant", content: finalContent };
+            const newMessages = [...state.messages, assistantMessage];
+            const newTitle = generateTitleFromAssistantContent(finalContent, "新对话");
+            return {
+              messages: newMessages,
+              isStreaming: false,
+              streamingContent: "",
+              streamingReasoning: "",
+              sessions: state.sessions.map((s) =>
+                s.id === state.currentSessionId
+                  ? {
+                      ...s,
+                      title: s.title === "新对话" ? newTitle : s.title,
+                      messages: newMessages,
+                      updatedAt: Date.now(),
+                    }
+                  : s
+              ),
+            };
+          });
         } catch (error) {
           set({
             error: error instanceof Error ? error.message : "发送消息失败",
@@ -344,19 +508,26 @@ export const useAIStore = create<AIState>()(
 
       // Clear chat
       clearChat: () => {
-        set({
+        set((state) => ({
           messages: [],
           pendingEdits: [],
           error: null,
           streamingContent: "",
           streamingReasoning: "",
-        });
+          sessions: state.sessions.map((s) =>
+            s.id === state.currentSessionId
+              ? { ...s, messages: [], updatedAt: Date.now() }
+              : s
+          ),
+        }));
       },
     }),
     {
       name: "neurone-ai",
       partialize: (state) => ({
         config: state.config,
+        sessions: state.sessions,
+        currentSessionId: state.currentSessionId,
       }),
     }
   )

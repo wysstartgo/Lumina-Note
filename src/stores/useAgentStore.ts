@@ -14,6 +14,43 @@ import {
 import { getAgentLoop, resetAgentLoop } from "@/agent/core/AgentLoop";
 import { MODES } from "@/agent/modes";
 
+interface AgentSession {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messages: Message[];
+  status: AgentStatus;
+  currentTask: string | null;
+  lastError: string | null;
+}
+
+function generateAgentSessionTitleFromMessages(messages: Message[], fallback: string = "新对话"): string {
+  const firstUser = messages.find((m) => m.role === "user");
+  if (!firstUser || !firstUser.content) return fallback;
+  const raw = firstUser.content.replace(/\s+/g, " ").trim();
+  if (!raw) return fallback;
+  const maxLen = 20;
+  return raw.length > maxLen ? `${raw.slice(0, maxLen)}...` : raw;
+}
+
+function generateAgentTitleFromAssistant(messages: Message[], fallback: string = "新对话"): string {
+  const firstAssistant = messages.find((m) => m.role === "assistant");
+  if (!firstAssistant || !firstAssistant.content) return fallback;
+  const cleaned = firstAssistant.content
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/<thinking>[\s\S]*?<\/thinking>/g, "")
+    .replace(/[#>*\-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return fallback;
+  const firstSentenceEnd = cleaned.search(/[。.!？?]/);
+  const base = firstSentenceEnd > 0 ? cleaned.slice(0, firstSentenceEnd) : cleaned;
+  const maxLen = 20;
+  const result = base.length > maxLen ? `${base.slice(0, maxLen)}...` : base;
+  return result || fallback;
+}
+
 interface AgentState {
   // 状态
   status: AgentStatus;
@@ -21,6 +58,14 @@ interface AgentState {
   pendingTool: ToolCall | null;
   currentTask: string | null;
   lastError: string | null;
+
+  // 会话
+  sessions: AgentSession[];
+  currentSessionId: string | null;
+  createSession: (title?: string) => void;
+  deleteSession: (id: string) => void;
+  switchSession: (id: string) => void;
+  renameSession: (id: string, title: string) => void;
 
   // 模式
   mode: AgentModeSlug;
@@ -72,13 +117,31 @@ export const useAgentStore = create<AgentState>()(
       // 延迟初始化监听器
       setTimeout(setupListeners, 0);
 
+      const now = Date.now();
+      const defaultSessionId = `agent-${now}`;
+
       return {
-        // 初始状态
+        // 初始状态（当前视图）
         status: "idle",
         messages: [],
         pendingTool: null,
         currentTask: null,
         lastError: null,
+
+        // 会话列表
+        sessions: [
+          {
+            id: defaultSessionId,
+            title: "新对话",
+            createdAt: now,
+            updatedAt: now,
+            messages: [],
+            status: "idle",
+            currentTask: null,
+            lastError: null,
+          },
+        ],
+        currentSessionId: defaultSessionId,
 
         // 模式
         mode: "editor",
@@ -88,9 +151,88 @@ export const useAgentStore = create<AgentState>()(
         autoApprove: false,
         setAutoApprove: (value) => set({ autoApprove: value }),
 
+        // 会话管理
+        createSession: (title) => {
+          const id = `agent-${Date.now()}`;
+          const createdAt = Date.now();
+          const session: AgentSession = {
+            id,
+            title: title || "新对话",
+            createdAt,
+            updatedAt: createdAt,
+            messages: [],
+            status: "idle",
+            currentTask: null,
+            lastError: null,
+          };
+
+          set((state) => ({
+            sessions: [...state.sessions, session],
+            currentSessionId: id,
+            status: "idle",
+            messages: [],
+            pendingTool: null,
+            currentTask: null,
+            lastError: null,
+          }));
+        },
+
+        deleteSession: (id) => {
+          set((state) => {
+            const sessions = state.sessions.filter((s) => s.id !== id);
+            let currentSessionId = state.currentSessionId;
+
+            if (currentSessionId === id) {
+              currentSessionId = sessions[0]?.id ?? null;
+            }
+
+            const current = sessions.find((s) => s.id === currentSessionId) || null;
+
+            return {
+              sessions,
+              currentSessionId,
+              status: current?.status ?? "idle",
+              messages: current?.messages ?? [],
+              pendingTool: null,
+              currentTask: current?.currentTask ?? null,
+              lastError: current?.lastError ?? null,
+            };
+          });
+        },
+
+        switchSession: (id) => {
+          set((state) => {
+            const session = state.sessions.find((s) => s.id === id);
+            if (!session) return state;
+
+            return {
+              ...state,
+              currentSessionId: id,
+              status: session.status,
+              messages: session.messages,
+              pendingTool: null,
+              currentTask: session.currentTask,
+              lastError: session.lastError,
+            };
+          });
+        },
+
+        renameSession: (id, title) => {
+          set((state) => ({
+            sessions: state.sessions.map((s) =>
+              s.id === id ? { ...s, title } : s
+            ),
+          }));
+        },
+
         // 启动任务
         startTask: async (message, context) => {
-          const { mode } = get();
+          const { mode, currentSessionId } = get();
+
+          // 确保存在会话
+          if (!currentSessionId) {
+            get().createSession();
+          }
           const loop = getAgentLoop();
 
           // 添加模式到上下文
@@ -99,19 +241,51 @@ export const useAgentStore = create<AgentState>()(
             mode: MODES[mode],
           };
 
-          set({
-            status: "running",
-            currentTask: message,
-            lastError: null,
+          set((state) => {
+            const userMessage: Message = { role: "user", content: message };
+            const currentMessages = state.messages.length ? state.messages : [];
+            const newMessages = [...currentMessages, userMessage];
+            const newTitle = generateAgentSessionTitleFromMessages(newMessages, "新对话");
+
+            return {
+              status: "running",
+              currentTask: message,
+              lastError: null,
+              messages: newMessages,
+              sessions: state.sessions.map((s) =>
+                s.id === state.currentSessionId
+                  ? {
+                      ...s,
+                      title: s.title === "新对话" ? newTitle : s.title,
+                      status: "running",
+                      currentTask: message,
+                      messages: newMessages,
+                      lastError: null,
+                      updatedAt: Date.now(),
+                    }
+                  : s
+              ),
+            };
           });
 
           try {
             await loop.startTask(message, fullContext);
           } catch (error) {
-            set({
+            const errMsg = error instanceof Error ? error.message : "未知错误";
+            set((state) => ({
               status: "error",
-              lastError: error instanceof Error ? error.message : "未知错误",
-            });
+              lastError: errMsg,
+              sessions: state.sessions.map((s) =>
+                s.id === state.currentSessionId
+                  ? {
+                      ...s,
+                      status: "error",
+                      lastError: errMsg,
+                      updatedAt: Date.now(),
+                    }
+                  : s
+              ),
+            }));
           }
 
           // 更新最终状态
@@ -122,7 +296,14 @@ export const useAgentStore = create<AgentState>()(
         abort: () => {
           const loop = getAgentLoop();
           loop.abort();
-          set({ status: "aborted" });
+          set((state) => ({
+            status: "aborted",
+            sessions: state.sessions.map((s) =>
+              s.id === state.currentSessionId
+                ? { ...s, status: "aborted", updatedAt: Date.now() }
+                : s
+            ),
+          }));
         },
 
         // 审批通过
@@ -142,31 +323,61 @@ export const useAgentStore = create<AgentState>()(
         // 清空聊天
         clearChat: () => {
           resetAgentLoop();
-          set({
+          set((state) => ({
             status: "idle",
             messages: [],
             pendingTool: null,
             currentTask: null,
             lastError: null,
-          });
+            sessions: state.sessions.map((s) =>
+              s.id === state.currentSessionId
+                ? {
+                    ...s,
+                    status: "idle",
+                    messages: [],
+                    currentTask: null,
+                    lastError: null,
+                    updatedAt: Date.now(),
+                  }
+                : s
+            ),
+          }));
         },
 
         // 从 Loop 更新状态
         _updateFromLoop: () => {
           const loop = getAgentLoop();
-          const state = loop.getState();
+          const loopState = loop.getState();
+
+          const viewMessages = loopState.messages.filter((m) => m.role !== "system");
           
-          set({
-            status: state.status,
-            messages: state.messages.filter((m) => m.role !== "system"), // 不显示 system 消息
-            pendingTool: state.pendingTool,
-            currentTask: state.currentTask,
-            lastError: state.lastError,
+          set((state) => {
+            const newTitle = generateAgentTitleFromAssistant(viewMessages, "新对话");
+            return {
+              status: loopState.status,
+              messages: viewMessages,
+              pendingTool: loopState.pendingTool,
+              currentTask: loopState.currentTask,
+              lastError: loopState.lastError,
+              sessions: state.sessions.map((s) =>
+                s.id === state.currentSessionId
+                  ? {
+                      ...s,
+                      title: s.title === "新对话" ? newTitle : s.title,
+                      status: loopState.status,
+                      messages: viewMessages,
+                      currentTask: loopState.currentTask,
+                      lastError: loopState.lastError,
+                      updatedAt: Date.now(),
+                    }
+                  : s
+              ),
+            };
           });
 
           // 自动审批检查
           const { autoApprove, pendingTool } = get();
-          if (autoApprove && pendingTool && state.status === "waiting_approval") {
+          if (autoApprove && pendingTool && loopState.status === "waiting_approval") {
             get().approve();
           }
         },
@@ -177,6 +388,8 @@ export const useAgentStore = create<AgentState>()(
       partialize: (state) => ({
         mode: state.mode,
         autoApprove: state.autoApprove,
+        sessions: state.sessions,
+        currentSessionId: state.currentSessionId,
       }),
     }
   )

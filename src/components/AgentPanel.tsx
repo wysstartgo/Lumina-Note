@@ -43,6 +43,12 @@ export function AgentPanel() {
     approve,
     reject,
     clearChat,
+    sessions,
+    currentSessionId,
+    createSession,
+    deleteSession,
+    switchSession,
+    renameSession,
   } = useAgentStore();
 
   const { vaultPath, currentFile, currentContent } = useFileStore();
@@ -75,123 +81,166 @@ export function AgentPanel() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-background">
-      {/* 头部 */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <div className="flex items-center gap-2">
-          <Bot className="w-5 h-5 text-primary" />
-          <span className="font-medium text-foreground">Lumina Agent</span>
+    <div className="flex h-full bg-background">
+      {/* 左侧会话列表 */}
+      <div className="w-56 border-r border-border flex flex-col">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+          <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+            <Bot className="w-4 h-4 text-primary" />
+            <span>会话列表</span>
+          </div>
+          <button
+            onClick={() => createSession()}
+            className="text-xs px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            新建
+          </button>
         </div>
-        <div className="flex items-center gap-2">
-          {/* 模式选择 */}
-          <ModeSelector mode={mode} onChange={setMode} />
-          {/* 设置按钮 */}
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
-          {/* 清空按钮 */}
-          <button
-            onClick={clearChat}
-            className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-            title="清空对话"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+        <div className="flex-1 overflow-y-auto text-xs">
+          {sessions.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => switchSession(s.id)}
+              className={`w-full flex items-center justify-between px-3 py-2 text-left border-b border-border/60 hover:bg-muted ${
+                s.id === currentSessionId ? "bg-muted text-primary" : "text-foreground"
+              }`}
+            >
+              <div className="flex-1 min-w-0">
+                <div className="truncate font-medium">{s.title || "新对话"}</div>
+              </div>
+              <button
+                className="ml-2 text-muted-foreground hover:text-red-500"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteSession(s.id);
+                }}
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* 设置面板 */}
-      {showSettings && (
-        <div className="px-4 py-3 border-b border-border bg-muted/50">
-          <label className="flex items-center gap-2 text-sm text-foreground">
-            <input
-              type="checkbox"
-              checked={autoApprove}
-              onChange={(e) => setAutoApprove(e.target.checked)}
-              className="rounded border-border"
+      {/* 右侧聊天区域 */}
+      <div className="flex flex-col flex-1">
+        {/* 头部 */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Bot className="w-5 h-5 text-primary" />
+            <span className="font-medium text-foreground">Lumina Agent</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {/* 模式选择 */}
+            <ModeSelector mode={mode} onChange={setMode} />
+            {/* 设置按钮 */}
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+            {/* 清空按钮 */}
+            <button
+              onClick={clearChat}
+              className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+              title="清空对话"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* 设置面板 */}
+        {showSettings && (
+          <div className="px-4 py-3 border-b border-border bg-muted/50">
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={autoApprove}
+                onChange={(e) => setAutoApprove(e.target.checked)}
+                className="rounded border-border"
+              />
+              自动批准工具调用
+            </label>
+          </div>
+        )}
+
+        {/* 消息列表 */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          {/* 欢迎消息 */}
+          {messages.length === 0 && (
+            <div className="text-sm text-muted-foreground leading-relaxed">
+              <p>{MODES[mode].roleDefinition}</p>
+              <p className="mt-2 text-xs opacity-70">输入任务指令开始</p>
+            </div>
+          )}
+
+          {/* 消息列表 - 聚合工具调用和结果 */}
+          {renderMessages(messages)}
+
+          {/* 工具审批 */}
+          {pendingTool && status === "waiting_approval" && (
+            <ToolApproval
+              toolName={pendingTool.name}
+              params={pendingTool.params}
+              onApprove={approve}
+              onReject={reject}
             />
-            自动批准工具调用
-          </label>
+          )}
+
+          {/* 加载状态 */}
+          {status === "running" && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>思考中...</span>
+            </div>
+          )}
+
+          {/* 错误状态 */}
+          {status === "error" && (
+            <div className="text-sm text-red-500 p-2 bg-red-500/10 rounded">
+              发生错误，请重试
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
         </div>
-      )}
 
-      {/* 消息列表 */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        {/* 欢迎消息 */}
-        {messages.length === 0 && (
-          <div className="text-sm text-muted-foreground leading-relaxed">
-            <p>{MODES[mode].roleDefinition}</p>
-            <p className="mt-2 text-xs opacity-70">输入任务指令开始</p>
-          </div>
-        )}
-
-        {/* 消息列表 - 聚合工具调用和结果 */}
-        {renderMessages(messages)}
-
-        {/* 工具审批 */}
-        {pendingTool && status === "waiting_approval" && (
-          <ToolApproval
-            toolName={pendingTool.name}
-            params={pendingTool.params}
-            onApprove={approve}
-            onReject={reject}
-          />
-        )}
-
-        {/* 加载状态 */}
-        {status === "running" && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span>思考中...</span>
-          </div>
-        )}
-
-        {/* 错误状态 */}
-        {status === "error" && (
-          <div className="text-sm text-red-500 p-2 bg-red-500/10 rounded">
-            发生错误，请重试
-          </div>
-        )}
-
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* 输入区域 - Chat 样式 */}
-      <div className="p-3 border-t border-border">
-        <div className="bg-muted/30 border border-border rounded-lg p-2 focus-within:ring-1 focus-within:ring-primary/50 transition-all">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="输入任务指令..."
-            className="w-full bg-transparent resize-none outline-none text-sm min-h-[60px] max-h-32 text-foreground placeholder-muted-foreground"
-            disabled={status === "running" || status === "waiting_approval"}
-          />
-          <div className="flex justify-between items-center mt-2">
-            <span className="text-xs text-muted-foreground">
-              {MODES[mode].name}
-            </span>
-            <div className="flex gap-2">
-              {status === "running" ? (
-                <button
-                  onClick={abort}
-                  className="bg-red-500 hover:bg-red-600 text-white rounded p-1.5 transition-colors"
-                  title="停止"
-                >
-                  <Square size={14} />
-                </button>
-              ) : (
-                <button
-                  onClick={handleSend}
-                  disabled={!input.trim() || status === "waiting_approval"}
-                  className="bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded p-1.5 transition-colors"
-                >
-                  <Send size={14} />
-                </button>
-              )}
+        {/* 输入区域 - Chat 样式 */}
+        <div className="p-3 border-t border-border">
+          <div className="bg-muted/30 border border-border rounded-lg p-2 focus-within:ring-1 focus-within:ring-primary/50 transition-all">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="输入任务指令..."
+              className="w-full bg-transparent resize-none outline-none text-sm min-h-[60px] max-h-32 text-foreground placeholder-muted-foreground"
+              disabled={status === "running" || status === "waiting_approval"}
+            />
+            <div className="flex justify-between items-center mt-2">
+              <span className="text-xs text-muted-foreground">
+                {MODES[mode].name}
+              </span>
+              <div className="flex gap-2">
+                {status === "running" ? (
+                  <button
+                    onClick={abort}
+                    className="bg-red-500 hover:bg-red-600 text-white rounded p-1.5 transition-colors"
+                    title="停止"
+                  >
+                    <Square size={14} />
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSend}
+                    disabled={!input.trim() || status === "waiting_approval"}
+                    className="bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded p-1.5 transition-colors"
+                  >
+                    <Send size={14} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
