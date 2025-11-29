@@ -25,6 +25,7 @@ import {
   Bot,
 } from "lucide-react";
 import { AgentPanel } from "./AgentPanel";
+import { ConversationList } from "./ConversationList";
 
 // Edit suggestion card
 function EditCard({ 
@@ -638,7 +639,12 @@ export function RightPanel() {
 
       {/* Chat Interface - 只在 docked 模式下显示 */}
       {rightPanelTab === "chat" && aiPanelMode === "docked" && (
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex overflow-hidden">
+          {/* 可折叠的对话列表侧栏 */}
+          <ConversationList />
+          
+          {/* 右侧主内容区 */}
+          <div className="flex-1 flex flex-col overflow-hidden">
           {/* Header with Mode Toggle */}
           <div className="p-2 border-b border-border flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -1035,6 +1041,7 @@ export function RightPanel() {
           </div>
             </>
           )}
+          </div>
         </div>
       )}
 

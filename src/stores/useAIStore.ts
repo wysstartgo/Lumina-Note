@@ -241,7 +241,7 @@ export const useAIStore = create<AIState>()(
 
       // Send message
       sendMessage: async (content, currentFile) => {
-        const { messages, referencedFiles, config, currentSessionId } = get();
+        const { referencedFiles, config, currentSessionId } = get();
 
         if (!config.apiKey) {
           set({ error: "请先在设置中配置 API Key" });
@@ -260,7 +260,8 @@ export const useAIStore = create<AIState>()(
         }
 
         set((state) => {
-          const newMessages = [...messages, userMessage];
+          // 使用 state.messages 而不是闭包中的 messages，确保获取最新状态
+          const newMessages = [...state.messages, userMessage];
           const newTitle = generateSessionTitleFromMessages(newMessages, "新对话");
           return {
             messages: newMessages,
@@ -300,9 +301,9 @@ export const useAIStore = create<AIState>()(
             filesToSend = [currentFile];
           }
 
-          // Call AI
+          // Call AI - 使用最新的 messages 状态
           const response = await chat(
-            [...messages, userMessage],
+            [...get().messages],
             filesToSend
           );
 
@@ -391,7 +392,7 @@ export const useAIStore = create<AIState>()(
 
       // 流式发送消息
       sendMessageStream: async (content, currentFile) => {
-        const { messages, referencedFiles, config, currentSessionId } = get();
+        const { referencedFiles, config, currentSessionId } = get();
 
         // Add user message
         const userMessage: Message = { role: "user", content };
@@ -401,7 +402,8 @@ export const useAIStore = create<AIState>()(
         }
 
         set((state) => {
-          const newMessages = [...messages, userMessage];
+          // 使用 state.messages 而不是闭包中的 messages，确保获取最新状态
+          const newMessages = [...state.messages, userMessage];
           const newTitle = generateSessionTitleFromMessages(newMessages, "新对话");
           return {
             messages: newMessages,
@@ -441,10 +443,11 @@ export const useAIStore = create<AIState>()(
               ).join("\n\n")}`
             : "你是一个有帮助的 AI 助手。";
 
+          // 从 store 获取最新的 messages，而不是使用闭包中的旧值
+          const currentMessages = get().messages;
           const llmMessages = [
             { role: "system" as const, content: systemMessage },
-            ...messages.map(m => ({ role: m.role, content: m.content })),
-            { role: "user" as const, content },
+            ...currentMessages.map(m => ({ role: m.role, content: m.content })),
           ];
 
           let fullContent = "";

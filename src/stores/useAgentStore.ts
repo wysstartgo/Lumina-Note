@@ -153,6 +153,9 @@ export const useAgentStore = create<AgentState>()(
 
         // 会话管理
         createSession: (title) => {
+          // 重置 AgentLoop，防止旧消息污染新会话
+          resetAgentLoop();
+          
           const id = `agent-${Date.now()}`;
           const createdAt = Date.now();
           const session: AgentSession = {
@@ -201,6 +204,9 @@ export const useAgentStore = create<AgentState>()(
         },
 
         switchSession: (id) => {
+          // 重置 AgentLoop 以清除旧会话的状态
+          resetAgentLoop();
+          
           set((state) => {
             const session = state.sessions.find((s) => s.id === id);
             if (!session) return state;
@@ -227,13 +233,18 @@ export const useAgentStore = create<AgentState>()(
 
         // 启动任务
         startTask: async (message, context) => {
-          const { mode, currentSessionId } = get();
+          const { mode, currentSessionId, messages } = get();
 
           // 确保存在会话
           if (!currentSessionId) {
             get().createSession();
           }
           const loop = getAgentLoop();
+          
+          // 恢复会话的消息历史到 AgentLoop（切换会话后 AgentLoop 是空的）
+          if (messages.length > 0) {
+            loop.setMessages(messages);
+          }
 
           // 添加模式到上下文
           const fullContext: TaskContext = {

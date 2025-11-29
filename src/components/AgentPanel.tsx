@@ -43,12 +43,6 @@ export function AgentPanel() {
     approve,
     reject,
     clearChat,
-    sessions,
-    currentSessionId,
-    createSession,
-    deleteSession,
-    switchSession,
-    renameSession,
   } = useAgentStore();
 
   const { vaultPath, currentFile, currentContent } = useFileStore();
@@ -81,49 +75,7 @@ export function AgentPanel() {
   };
 
   return (
-    <div className="flex h-full bg-background">
-      {/* 左侧会话列表 */}
-      <div className="w-56 border-r border-border flex flex-col">
-        <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-          <div className="flex items-center gap-2 text-xs font-medium text-foreground">
-            <Bot className="w-4 h-4 text-primary" />
-            <span>会话列表</span>
-          </div>
-          <button
-            onClick={() => createSession()}
-            className="text-xs px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90"
-          >
-            新建
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto text-xs">
-          {sessions.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => switchSession(s.id)}
-              className={`w-full flex items-center justify-between px-3 py-2 text-left border-b border-border/60 hover:bg-muted ${
-                s.id === currentSessionId ? "bg-muted text-primary" : "text-foreground"
-              }`}
-            >
-              <div className="flex-1 min-w-0">
-                <div className="truncate font-medium">{s.title || "新对话"}</div>
-              </div>
-              <button
-                className="ml-2 text-muted-foreground hover:text-red-500"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deleteSession(s.id);
-                }}
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* 右侧聊天区域 */}
-      <div className="flex flex-col flex-1">
+    <div className="flex flex-col h-full bg-background">
         {/* 头部 */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
@@ -244,7 +196,6 @@ export function AgentPanel() {
             </div>
           </div>
         </div>
-      </div>
     </div>
   );
 }

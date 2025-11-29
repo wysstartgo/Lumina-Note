@@ -40,6 +40,13 @@ export class AgentLoop {
   // ============ 公共 API ============
 
   /**
+   * 设置消息历史（用于恢复会话）
+   */
+  setMessages(messages: Message[]): void {
+    this.stateManager.setMessages(messages);
+  }
+
+  /**
    * 启动 Agent 任务
    */
   async startTask(userMessage: string, context: TaskContext): Promise<void> {
