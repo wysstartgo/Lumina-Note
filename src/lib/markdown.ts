@@ -173,83 +173,14 @@ turndownService.addRule("katexBlock", {
 });
 
 /**
- * Preprocess markdown to fix math formula detection issues
- * and convert WikiLinks to clickable links
+ * 旧的 markdown 预处理逻辑（已在 parseMarkdown 中重写整合）
+ * 保留注释以便未来参考实现，但不再实际使用该函数。
  */
-function preprocessMarkdown(markdown: string): string {
-  let result = markdown;
-  
-  // 0. Handle Math Formulas (Copying logic from CodeMirrorEditor)
-  // We replace math with HTML placeholders to prevent marked from messing them up
-  const mathPlaceholders: string[] = [];
-  const mathPlaceholderPrefix = "⟦MATH_BLOCK_";
-  const mathPlaceholderSuffix = "⟧";
-  
-  // Helper to render math and store placeholder
-  const renderAndStoreMath = (formula: string, displayMode: boolean) => {
-    try {
-      const html = katex.renderToString(formula, {
-        displayMode,
-        throwOnError: false,
-        trust: true,
-        strict: false,
-        output: "html", // Use HTML output
-      });
-      mathPlaceholders.push(html);
-      return `${mathPlaceholderPrefix}${mathPlaceholders.length - 1}${mathPlaceholderSuffix}`;
-    } catch (e) {
-      console.error("KaTeX render error:", e);
-      return formula;
-    }
-  };
-
-  // 1. Block Math $$...$$
-  result = result.replace(/\$\$([\s\S]+?)\$\$/g, (match, formula) => {
-    return renderAndStoreMath(formula.trim(), true);
-  });
-
-  // 2. Inline Math $...$ (using the same regex as CodeMirrorEditor)
-  // Matches $...$ but not if preceded by \ or $ (to avoid $$), and not if followed by $
-  // Allows newlines inside but not consecutive newlines (paragraph breaks)
-  const inlineMathRegex = /(?<!\\|\$)\$(?!\$)((?:[^$\n]|\n(?!\n))+?)(?<!\\|\$)\$(?!\$)/g;
-  result = result.replace(inlineMathRegex, (match, formula) => {
-    return renderAndStoreMath(formula.trim(), false);
-  });
-
-  // 3. Convert [[WikiLinks]] to HTML spans with data attribute
-  // Supports [[link]] and [[link|display text]]
-  result = result.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_match, link, display) => {
-    const displayText = display || link;
-    const linkName = link.trim();
-    return `<span class="wikilink" data-wikilink="${linkName}">${displayText}</span>`;
-  });
-  
-  // 4. Convert #tags to styled spans (but not in code blocks or URLs)
-  // Match #tag at word boundaries, supporting Chinese characters
-  result = result.replace(/(?<![`\w\/])#([a-zA-Z\u4e00-\u9fa5][a-zA-Z0-9\u4e00-\u9fa5_-]*)/g, (_match, tag) => {
-    return `<span class="tag" data-tag="${tag}">#${tag}</span>`;
-  });
-
-  // 5. Restore Math Placeholders
-  // We do this BEFORE marked parsing if we want marked to ignore the math content (it's already HTML)
-  // However, marked might escape HTML.
-  // But since we are using a custom renderer or just standard marked, marked usually preserves HTML blocks if gfm is true.
-  // To be safe, we can restore AFTER marked, but then we need to protect placeholders from marked.
-  // Let's try restoring AFTER marked parsing.
-  
-  // Wait, if we restore after marked, marked might have escaped our placeholders if they look like something else.
-  // Our placeholders are ⟦MATH_BLOCK_0⟧ which marked treats as text.
-  // So we should restore after marked.
-  
-  // Store placeholders in a global or closure-scoped map? 
-  // preprocessMarkdown returns string. parseMarkdown calls it.
-  // We need to change the flow of parseMarkdown to handle this restoration.
-  
-  // Let's attach the placeholders to the result string temporarily? No.
-  // We need to refactor parseMarkdown.
-  
-  return result; // This result now contains placeholders like ⟦MATH_BLOCK_0⟧
-}
+// function preprocessMarkdown(markdown: string): string {
+//   let result = markdown;
+//   // ... legacy implementation (now handled directly in parseMarkdown)
+//   return result;
+// }
 
 /**
  * Parse Markdown to HTML
@@ -283,13 +214,13 @@ export function parseMarkdown(markdown: string): string {
     };
 
     // 1. Block Math $$...$$
-    processed = processed.replace(/\$\$([\s\S]+?)\$\$/g, (match, formula) => {
+    processed = processed.replace(/\$\$([\s\S]+?)\$\$/g, (_match, formula) => {
       return renderAndStoreMath(formula.trim(), true);
     });
 
     // 2. Inline Math $...$
     const inlineMathRegex = /(?<!\\|\$)\$(?!\$)((?:[^$\n]|\n(?!\n))+?)(?<!\\|\$)\$(?!\$)/g;
-    processed = processed.replace(inlineMathRegex, (match, formula) => {
+    processed = processed.replace(inlineMathRegex, (_match, formula) => {
       return renderAndStoreMath(formula.trim(), false);
     });
 
