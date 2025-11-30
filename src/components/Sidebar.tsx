@@ -376,7 +376,7 @@ export function Sidebar() {
   }, [openFile, openDatabaseTab]);
 
   return (
-    <aside className="w-full h-full border-r border-border flex flex-col bg-muted/30 dark:bg-[#252526] transition-colors duration-300">
+    <aside className="w-full h-full border-r border-border flex flex-col bg-muted/30 transition-colors duration-300">
       {/* Header */}
       <div className="p-3 flex items-center justify-between text-xs font-bold text-muted-foreground tracking-wider uppercase">
         <span>资源管理器</span>
@@ -420,7 +420,7 @@ export function Sidebar() {
 
       {/* Daily Note Quick Action */}
       <div className="px-2 mb-2">
-        <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground bg-background dark:bg-[#2d2d2d] hover:bg-accent dark:hover:bg-[#37373d] border border-border rounded-md transition-colors shadow-sm">
+        <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground bg-background hover:bg-accent border border-border rounded-md transition-colors shadow-sm">
           <Calendar size={14} />
           <span>今日速记</span>
         </button>
