@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useUIStore } from "@/stores/useUIStore";
 import { useAIStore } from "@/stores/useAIStore";
+import { useAgentStore } from "@/stores/useAgentStore";
 import { useFileStore } from "@/stores/useFileStore";
 import { useNoteIndexStore } from "@/stores/useNoteIndexStore";
 import { useRAGStore } from "@/stores/useRAGStore";
@@ -411,6 +412,7 @@ export function RightPanel() {
     rebuildIndex,
     cancelIndex,
   } = useRAGStore();
+  const { autoApprove, setAutoApprove } = useAgentStore();
   
   const [inputValue, setInputValue] = useState("");
   const [showSettings, setShowSettings] = useState(false);
@@ -706,9 +708,19 @@ export function RightPanel() {
             </div>
           </div>
 
-          {/* Settings Panel */}
-          {showSettings && (
-            <div className="p-3 border-b border-border bg-muted/30 space-y-3 max-h-80 overflow-y-auto">
+          {/* Settings Panel - 全屏模式 */}
+          {showSettings ? (
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* 返回按钮 */}
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium">⚙️ 设置</h3>
+                <button
+                  onClick={() => setShowSettings(false)}
+                  className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-muted transition-colors"
+                >
+                  ← 返回
+                </button>
+              </div>
               {/* AI Provider Settings */}
               <div className="space-y-2">
                 <div className="text-xs font-medium text-foreground">🤖 AI 对话设置</div>
@@ -752,7 +764,7 @@ export function RightPanel() {
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1">模型</label>
                   <select
-                    value={config.model}
+                    value={PROVIDER_REGISTRY[config.provider as LLMProviderType]?.models.some(m => m.id === config.model) ? config.model : "custom"}
                     onChange={(e) => setConfig({ model: e.target.value })}
                     className="w-full text-xs p-2 rounded border border-border bg-background"
                   >
@@ -763,25 +775,53 @@ export function RightPanel() {
                     ))}
                   </select>
                 </div>
-                {/* 自定义 Base URL (高级选项) */}
-                {(config.provider === "openai" || config.provider === "ollama") && (
+                {/* 自定义模型 ID 输入框 */}
+                {config.model === "custom" && (
                   <div>
                     <label className="text-xs text-muted-foreground block mb-1">
-                      Base URL <span className="text-muted-foreground">(可选)</span>
+                      自定义模型 ID
                     </label>
                     <input
                       type="text"
-                      value={config.baseUrl || ""}
-                      onChange={(e) => setConfig({ baseUrl: e.target.value || undefined })}
-                      placeholder={PROVIDER_REGISTRY[config.provider]?.defaultBaseUrl}
+                      value={config.customModelId || ""}
+                      onChange={(e) => setConfig({ customModelId: e.target.value })}
+                      placeholder="例如：gemini-2.5-pro-preview-06-05"
                       className="w-full text-xs p-2 rounded border border-border bg-background"
                     />
                   </div>
                 )}
+                {/* 自定义 Base URL (所有 Provider 都支持) */}
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">
+                    Base URL <span className="text-muted-foreground">(可选，用于第三方代理)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={config.baseUrl || ""}
+                    onChange={(e) => setConfig({ baseUrl: e.target.value || undefined })}
+                    placeholder={PROVIDER_REGISTRY[config.provider as LLMProviderType]?.defaultBaseUrl}
+                    className="w-full text-xs p-2 rounded border border-border bg-background"
+                  />
+                </div>
+              </div>
+
+              {/* Agent Settings */}
+              <div className="space-y-2 pt-3 border-t border-border">
+                <div className="text-xs font-medium text-foreground">🤖 Agent 设置</div>
+                <label className="flex items-center gap-2 text-xs text-foreground cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoApprove}
+                    onChange={(e) => setAutoApprove(e.target.checked)}
+                    className="w-3 h-3 rounded border-border"
+                  />
+                  自动批准工具调用
+                  <span className="text-muted-foreground">(无需手动确认)</span>
+                </label>
               </div>
 
               {/* RAG Settings */}
-              <div className="space-y-2 pt-2 border-t border-border">
+              <div className="space-y-2 pt-3 border-t border-border">
                 <div className="text-xs font-medium text-foreground flex items-center justify-between">
                   <span>🔍 语义搜索 (RAG)</span>
                   <label className="flex items-center gap-1 cursor-pointer">
@@ -1031,8 +1071,8 @@ export function RightPanel() {
                 )}
               </div>
             </div>
-          )}
-
+          ) : (
+            <>
           {/* Agent Mode */}
           {chatMode === "agent" && (
             <div className="flex-1 overflow-hidden">
@@ -1214,6 +1254,8 @@ export function RightPanel() {
               </div>
             </div>
           </div>
+            </>
+          )}
             </>
           )}
           </div>

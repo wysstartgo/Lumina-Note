@@ -146,12 +146,22 @@ const PhysicsEngine = {
       n.vx *= friction;
       n.vy *= friction;
 
-      // Boundary constraints
-      const margin = 30;
-      if (n.x < margin) n.vx += 50 * dt;
-      if (n.x > width - margin) n.vx -= 50 * dt;
-      if (n.y < margin) n.vy += 50 * dt;
-      if (n.y > height - margin) n.vy -= 50 * dt;
+      // Circular soft boundary constraint
+      // 计算到中心的距离
+      const distToCenter = Math.sqrt(dx * dx + dy * dy);
+      // 圆形边界半径（取宽高最小值的一半，留一点边距）
+      const boundaryRadius = Math.min(width, height) * 0.45;
+      
+      // 如果超出边界，施加一个柔和的向心力（力度随超出程度增加）
+      if (distToCenter > boundaryRadius) {
+        const overflow = distToCenter - boundaryRadius;
+        // 柔和的弹性力，超出越多力越大
+        const pullStrength = overflow * 0.05;
+        const pullX = (dx / distToCenter) * pullStrength;
+        const pullY = (dy / distToCenter) * pullStrength;
+        n.vx += pullX * dt;
+        n.vy += pullY * dt;
+      }
     });
 
     return nodes;

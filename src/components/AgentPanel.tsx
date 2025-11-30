@@ -18,7 +18,6 @@ import {
   Check,
   X,
   Trash2,
-  Settings,
   ChevronDown,
   ChevronRight,
   Loader2,
@@ -32,7 +31,6 @@ import {
 
 export function AgentPanel() {
   const [input, setInput] = useState("");
-  const [showSettings, setShowSettings] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { isRecording, interimText, toggleRecording } = useSpeechToText((text: string) => {
     setInput((prev) => (prev ? prev + " " + text : text));
@@ -43,9 +41,7 @@ export function AgentPanel() {
     messages,
     pendingTool,
     mode,
-    autoApprove,
     setMode,
-    setAutoApprove,
     startTask,
     abort,
     approve,
@@ -102,13 +98,6 @@ export function AgentPanel() {
           <div className="flex items-center gap-2">
             {/* 模式选择 */}
             <ModeSelector mode={mode} onChange={setMode} />
-            {/* 设置按钮 */}
-            <button
-              onClick={() => setShowSettings(!showSettings)}
-              className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
             {/* 清空按钮 */}
             <button
               onClick={clearChat}
@@ -119,21 +108,6 @@ export function AgentPanel() {
             </button>
           </div>
         </div>
-
-        {/* 设置面板 */}
-        {showSettings && (
-          <div className="px-4 py-3 border-b border-border bg-muted/50">
-            <label className="flex items-center gap-2 text-sm text-foreground">
-              <input
-                type="checkbox"
-                checked={autoApprove}
-                onChange={(e) => setAutoApprove(e.target.checked)}
-                className="rounded border-border"
-              />
-              自动批准工具调用
-            </label>
-          </div>
-        )}
 
         {/* 消息列表 */}
         <div className="flex-1 overflow-y-auto p-3 space-y-3">

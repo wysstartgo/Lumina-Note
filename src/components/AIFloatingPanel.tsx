@@ -216,7 +216,7 @@ export function AIFloatingPanel({ ballPosition, onDock }: AIFloatingPanelProps) 
             <div>
               <label className="text-xs text-muted-foreground block mb-1">模型</label>
               <select
-                value={config.model}
+                value={PROVIDER_REGISTRY[config.provider as LLMProviderType]?.models.some(m => m.id === config.model) ? config.model : "custom"}
                 onChange={(e) => setConfig({ model: e.target.value })}
                 className="w-full text-xs p-2 rounded border border-border bg-background"
               >
@@ -226,6 +226,34 @@ export function AIFloatingPanel({ ballPosition, onDock }: AIFloatingPanelProps) 
                   </option>
                 ))}
               </select>
+            </div>
+            {/* 自定义模型 ID 输入框 */}
+            {config.model === "custom" && (
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">
+                  自定义模型 ID
+                </label>
+                <input
+                  type="text"
+                  value={config.customModelId || ""}
+                  onChange={(e) => setConfig({ customModelId: e.target.value })}
+                  placeholder="输入模型 ID"
+                  className="w-full text-xs p-2 rounded border border-border bg-background"
+                />
+              </div>
+            )}
+            {/* 自定义 Base URL */}
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">
+                Base URL <span className="text-muted-foreground">(可选)</span>
+              </label>
+              <input
+                type="text"
+                value={config.baseUrl || ""}
+                onChange={(e) => setConfig({ baseUrl: e.target.value || undefined })}
+                placeholder={PROVIDER_REGISTRY[config.provider as LLMProviderType]?.defaultBaseUrl}
+                className="w-full text-xs p-2 rounded border border-border bg-background"
+              />
             </div>
           </div>
         </div>

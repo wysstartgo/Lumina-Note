@@ -54,12 +54,20 @@ import {
  * 根据当前配置创建 Provider 实例
  */
 export function createProvider(): LLMProvider {
-  const config = getLLMConfig();
+  const rawConfig = getLLMConfig();
 
   // Ollama 不需要 API Key
-  if (!config.apiKey && config.provider !== "ollama") {
+  if (!rawConfig.apiKey && rawConfig.provider !== "ollama") {
     throw new Error("请先配置 API Key");
   }
+
+  // 处理自定义模型：当 model === "custom" 时使用 customModelId
+  const config = {
+    ...rawConfig,
+    model: rawConfig.model === "custom" && rawConfig.customModelId 
+      ? rawConfig.customModelId 
+      : rawConfig.model,
+  };
 
   switch (config.provider) {
     case "anthropic":
