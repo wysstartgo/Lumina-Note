@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { readFile, saveFile } from "@/lib/tauri";
+import { parseFrontmatter } from "@/lib/frontmatter";
 
 // Secondary editor state for split view
 interface SplitState {
@@ -15,6 +16,7 @@ interface SplitState {
   saveSecondary: () => Promise<void>;
   closeSecondary: () => void;
   swapPanels: () => void;
+  reloadSecondaryIfOpen: (path: string) => Promise<void>;
 }
 
 export const useSplitStore = create<SplitState>((set, get) => ({
@@ -50,6 +52,14 @@ export const useSplitStore = create<SplitState>((set, get) => ({
     try {
       await saveFile(secondaryFile, secondaryContent);
       set({ secondaryIsDirty: false });
+      
+      // 检查是否属于某个数据库，如果是则刷新数据库
+      const { frontmatter, hasFrontmatter } = parseFrontmatter(secondaryContent);
+      if (hasFrontmatter && frontmatter.db) {
+        // 动态导入以避免循环依赖
+        const { useDatabaseStore } = await import("./useDatabaseStore");
+        useDatabaseStore.getState().refreshRows(frontmatter.db as string);
+      }
     } catch (error) {
       console.error("Failed to save secondary file:", error);
     }
@@ -65,5 +75,21 @@ export const useSplitStore = create<SplitState>((set, get) => ({
 
   swapPanels: () => {
     // This will be handled at the UI level by swapping with main store
+  },
+  
+  // Reload secondary file if it's currently open (for external updates)
+  reloadSecondaryIfOpen: async (path: string) => {
+    const { secondaryFile } = get();
+    if (secondaryFile !== path) return;
+    
+    try {
+      const content = await readFile(path);
+      set({
+        secondaryContent: content,
+        secondaryIsDirty: false,
+      });
+    } catch (error) {
+      console.error(`Failed to reload secondary file ${path}:`, error);
+    }
   },
 }));

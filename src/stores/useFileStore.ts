@@ -104,6 +104,9 @@ interface FileState {
   canGoBack: () => boolean;
   canGoForward: () => boolean;
   
+  // File sync actions
+  reloadFileIfOpen: (path: string) => Promise<void>;
+  
   // Workspace actions
   clearVault: () => void;
 }
@@ -937,6 +940,36 @@ export const useFileStore = create<FileState>()(
       navigationHistory: [],
       navigationIndex: -1,
     });
+  },
+  
+  // Reload file if it's currently open (for external updates like database edits)
+  reloadFileIfOpen: async (path: string) => {
+    const { tabs, activeTabIndex, currentFile } = get();
+    
+    // 查找该文件是否在标签页中打开
+    const tabIndex = tabs.findIndex(t => t.type === 'file' && t.path === path);
+    if (tabIndex === -1) return;
+    
+    try {
+      const newContent = await readFile(path);
+      const updatedTabs = tabs.map((tab, i) => 
+        i === tabIndex ? { ...tab, content: newContent, isDirty: false } : tab
+      );
+      
+      // 如果是当前激活的标签页，同时更新 currentContent
+      if (tabIndex === activeTabIndex && currentFile === path) {
+        set({
+          tabs: updatedTabs,
+          currentContent: newContent,
+          lastSavedContent: newContent,
+          isDirty: false,
+        });
+      } else {
+        set({ tabs: updatedTabs });
+      }
+    } catch (error) {
+      console.error(`Failed to reload file ${path}:`, error);
+    }
   },
 }),
     {

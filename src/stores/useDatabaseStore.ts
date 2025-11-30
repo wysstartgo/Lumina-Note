@@ -5,6 +5,7 @@ import type {
   DatabaseColumn,
   DatabaseRow,
   DatabaseView,
+  DatabaseWithRows,
   CellValue,
   CreateDatabaseOptions,
   SelectOption,
@@ -14,7 +15,9 @@ import type {
 } from "@/types/database";
 import { DATABASE_TEMPLATES } from "@/types/database";
 import { readFile, saveFile, exists, createDir } from "@/lib/tauri";
+import { parseFrontmatter, updateFrontmatter, getTitleFromPath } from "@/lib/frontmatter";
 import { useFileStore } from "./useFileStore";
+import { useSplitStore } from "./useSplitStore";
 
 // ==================== 工具函数 ====================
 
@@ -32,11 +35,24 @@ function getDbPath(dbId: string): string {
   return `${getDbDir()}/${dbId}.db.json`;
 }
 
+// 格式化 YAML 值
+function formatYamlValue(value: CellValue): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'number') return String(value);
+  if (Array.isArray(value)) return `[${value.join(', ')}]`;
+  if (typeof value === 'object' && 'start' in value) {
+    // DateValue
+    return value.end ? `${value.start} - ${value.end}` : value.start;
+  }
+  return String(value);
+}
+
 // ==================== Store Interface ====================
 
 interface DatabaseState {
-  // 已加载的数据库
-  databases: Record<string, Database>;
+  // 已加载的数据库（包含运行时行数据）
+  databases: Record<string, DatabaseWithRows>;
   
   // 当前打开的数据库 ID
   currentDbId: string | null;
@@ -45,9 +61,13 @@ interface DatabaseState {
   editingCell: { rowId: string; columnId: string } | null;
   
   // ===== 加载/保存 =====
-  loadDatabase: (dbId: string) => Promise<Database | null>;
+  loadDatabase: (dbId: string) => Promise<DatabaseWithRows | null>;
   saveDatabase: (dbId: string) => Promise<void>;
   listDatabases: () => Promise<string[]>;
+  
+  // ===== Dataview: 从笔记加载行 =====
+  loadRowsFromNotes: (dbId: string) => Promise<DatabaseRow[]>;
+  refreshRows: (dbId: string) => Promise<void>;
   
   // ===== 数据库操作 =====
   createDatabase: (options: CreateDatabaseOptions) => Promise<string>;
@@ -61,11 +81,11 @@ interface DatabaseState {
   deleteColumn: (dbId: string, columnId: string) => void;
   reorderColumns: (dbId: string, columnIds: string[]) => void;
   
-  // ===== 行操作 =====
-  addRow: (dbId: string, cells?: Record<string, CellValue>) => string;
-  updateCell: (dbId: string, rowId: string, columnId: string, value: CellValue) => void;
-  deleteRow: (dbId: string, rowId: string) => void;
-  duplicateRow: (dbId: string, rowId: string) => string;
+  // ===== 行操作 (Dataview: 操作笔记 YAML) =====
+  addRow: (dbId: string, cells?: Record<string, CellValue>) => Promise<string>;
+  updateCell: (dbId: string, rowId: string, columnId: string, value: CellValue) => Promise<void>;
+  deleteRow: (dbId: string, rowId: string) => Promise<void>;
+  duplicateRow: (dbId: string, rowId: string) => Promise<string>;
   reorderRows: (dbId: string, rowIds: string[]) => void;
   
   // ===== 视图操作 =====
@@ -110,13 +130,21 @@ export const useDatabaseStore = create<DatabaseState>()(
           }
           
           const content = await readFile(path);
-          const db = JSON.parse(content) as Database;
+          const dbDef = JSON.parse(content) as Database;
+          
+          // 从笔记加载行数据
+          const rows = await get().loadRowsFromNotes(dbId);
+          
+          const dbWithRows: DatabaseWithRows = {
+            ...dbDef,
+            rows,
+          };
           
           set((state) => ({
-            databases: { ...state.databases, [dbId]: db }
+            databases: { ...state.databases, [dbId]: dbWithRows }
           }));
           
-          return db;
+          return dbWithRows;
         } catch (error) {
           console.error(`Failed to load database ${dbId}:`, error);
           return null;
@@ -133,8 +161,11 @@ export const useDatabaseStore = create<DatabaseState>()(
           await createDir(dir);
         }
         
+        // 只保存数据库定义，不保存 rows（rows 在笔记 YAML 中）
+        const { rows: _, ...dbDef } = db;
+        
         const path = getDbPath(dbId);
-        const content = JSON.stringify(db, null, 2);
+        const content = JSON.stringify(dbDef, null, 2);
         await saveFile(path, content);
       },
       
@@ -144,12 +175,109 @@ export const useDatabaseStore = create<DatabaseState>()(
           const dirExists = await exists(dir);
           if (!dirExists) return [];
           
-          // 这里需要一个列出目录内容的方法
-          // 暂时返回已加载的数据库
           return Object.keys(get().databases);
         } catch {
           return [];
         }
+      },
+      
+      // ===== Dataview: 从笔记加载行 =====
+      loadRowsFromNotes: async (dbId: string) => {
+        const vaultPath = useFileStore.getState().vaultPath;
+        if (!vaultPath) return [];
+        
+        // 先读取数据库定义获取列映射
+        const dbPath = getDbPath(dbId);
+        let columns: DatabaseColumn[] = [];
+        try {
+          const dbContent = await readFile(dbPath);
+          const dbDef = JSON.parse(dbContent) as Database;
+          columns = dbDef.columns;
+        } catch {
+          // 数据库定义不存在，使用空列
+        }
+        
+        // 构建列名到 ID 的映射
+        const nameToId = new Map<string, string>();
+        for (const col of columns) {
+          nameToId.set(col.name.toLowerCase(), col.id);
+        }
+        
+        const fileTree = useFileStore.getState().fileTree;
+        const rows: DatabaseRow[] = [];
+        
+        // 递归收集所有 .md 文件
+        const collectMdFiles = (entries: typeof fileTree): string[] => {
+          const files: string[] = [];
+          for (const entry of entries) {
+            if (entry.isDirectory && entry.children) {
+              files.push(...collectMdFiles(entry.children));
+            } else if (entry.name.endsWith('.md')) {
+              files.push(entry.path);
+            }
+          }
+          return files;
+        };
+        
+        const mdFiles = collectMdFiles(fileTree);
+        
+        // 读取每个文件的 frontmatter
+        for (const filePath of mdFiles) {
+          try {
+            const content = await readFile(filePath);
+            const { frontmatter, hasFrontmatter } = parseFrontmatter(content);
+            
+            // 检查是否属于此数据库
+            if (hasFrontmatter && frontmatter.db === dbId) {
+              // 构建 cells，使用列 ID 作为键
+              const cells: Record<string, CellValue> = {};
+              for (const [key, value] of Object.entries(frontmatter)) {
+                if (!['db', 'createdAt', 'updatedAt'].includes(key)) {
+                  // 尝试通过列名找到列 ID，否则直接使用 key
+                  const columnId = nameToId.get(key.toLowerCase()) || key;
+                  
+                  // 根据列类型转换值
+                  const column = columns.find(c => c.id === columnId);
+                  if (column?.type === 'date' && typeof value === 'string' && value) {
+                    // 日期字符串转 DateValue 对象
+                    cells[columnId] = { start: value };
+                  } else {
+                    cells[columnId] = value as CellValue;
+                  }
+                }
+              }
+              
+              const row: DatabaseRow = {
+                id: filePath,
+                notePath: filePath,
+                noteTitle: (frontmatter.title as string) || getTitleFromPath(filePath),
+                cells,
+                createdAt: (frontmatter.createdAt as string) || new Date().toISOString(),
+                updatedAt: (frontmatter.updatedAt as string) || new Date().toISOString(),
+              };
+              
+              rows.push(row);
+            }
+          } catch (error) {
+            console.warn(`Failed to read note ${filePath}:`, error);
+          }
+        }
+        
+        return rows;
+      },
+      
+      refreshRows: async (dbId: string) => {
+        const rows = await get().loadRowsFromNotes(dbId);
+        set((state) => {
+          const db = state.databases[dbId];
+          if (!db) return state;
+          return {
+            databases: {
+              ...state.databases,
+              [dbId]: { ...db, rows }
+            }
+          };
+        });
       },
       
       // ===== 数据库操作 =====
@@ -158,7 +286,7 @@ export const useDatabaseStore = create<DatabaseState>()(
         const template = options.template ? DATABASE_TEMPLATES[options.template] : DATABASE_TEMPLATES.blank;
         const now = new Date().toISOString();
         
-        const db: Database = {
+        const dbWithRows: DatabaseWithRows = {
           id: dbId,
           name: options.name,
           icon: options.icon,
@@ -166,7 +294,7 @@ export const useDatabaseStore = create<DatabaseState>()(
           columns: template.columns?.map(col => ({ ...col, id: col.id || generateId() })) || [
             { id: generateId(), name: '标题', type: 'text' as ColumnType }
           ],
-          rows: [],
+          rows: [], // 运行时为空，数据从笔记加载
           views: template.views?.map(v => ({ ...v, id: v.id || generateId() })) || [
             { id: generateId(), name: '表格', type: 'table' as const }
           ],
@@ -176,14 +304,14 @@ export const useDatabaseStore = create<DatabaseState>()(
         };
         
         // 设置活动视图
-        db.activeViewId = db.views[0]?.id || '';
+        dbWithRows.activeViewId = dbWithRows.views[0]?.id || '';
         
         set((state) => ({
-          databases: { ...state.databases, [dbId]: db },
+          databases: { ...state.databases, [dbId]: dbWithRows },
           currentDbId: dbId,
         }));
         
-        // 保存到文件
+        // 保存到文件（只保存定义，不保存 rows）
         await get().saveDatabase(dbId);
         
         return dbId;
@@ -312,123 +440,238 @@ export const useDatabaseStore = create<DatabaseState>()(
         get().saveDatabase(dbId);
       },
       
-      // ===== 行操作 =====
-      addRow: (dbId: string, cells?: Record<string, CellValue>) => {
-        const rowId = generateId();
+      // ===== 行操作 (Dataview: 操作笔记 YAML) =====
+      addRow: async (dbId: string, cells?: Record<string, CellValue>) => {
+        const vaultPath = useFileStore.getState().vaultPath;
+        if (!vaultPath) throw new Error("No vault path");
+        
+        const db = get().databases[dbId];
+        if (!db) throw new Error("Database not found");
+        
         const now = new Date().toISOString();
+        const noteId = generateId();
+        const noteName = `${db.name}-${noteId}`;
+        const notePath = `${vaultPath}/${noteName}.md`;
+        
+        // 构建列 ID 到列名的映射
+        const idToName = new Map<string, string>();
+        for (const col of db.columns) {
+          idToName.set(col.id, col.name);
+        }
+        
+        // 获取标题列的值
+        const titleColumnId = db.columns.find(c => c.name.toLowerCase() === 'title' || c.name === '标题')?.id;
+        const titleValue = titleColumnId && cells?.[titleColumnId] 
+          ? String(cells[titleColumnId]) 
+          : noteName;
+        
+        // 构建 YAML 内容（使用列名）
+        const yamlLines = [
+          `db: ${dbId}`,
+          `title: ${titleValue}`,
+          `createdAt: ${now}`,
+          `updatedAt: ${now}`,
+        ];
+        
+        if (cells) {
+          for (const [columnId, value] of Object.entries(cells)) {
+            const columnName = idToName.get(columnId) || columnId;
+            if (!['db', 'title', 'createdAt', 'updatedAt'].includes(columnName.toLowerCase())) {
+              yamlLines.push(`${columnName}: ${formatYamlValue(value)}`);
+            }
+          }
+        }
+        
+        // 创建笔记文件
+        const noteContent = `---
+${yamlLines.join('\n')}
+---
+
+# ${titleValue}
+
+`;
+        
+        await saveFile(notePath, noteContent);
+        
+        // 创建新行并添加到状态
+        const newRow: DatabaseRow = {
+          id: notePath,
+          notePath,
+          noteTitle: titleValue,
+          cells: cells || {},
+          createdAt: now,
+          updatedAt: now,
+        };
         
         set((state) => {
-          const db = state.databases[dbId];
-          if (!db) return state;
+          const currentDb = state.databases[dbId];
+          if (!currentDb) return state;
+          return {
+            databases: {
+              ...state.databases,
+              [dbId]: {
+                ...currentDb,
+                rows: [...currentDb.rows, newRow],
+              }
+            }
+          };
+        });
+        
+        // 刷新文件树
+        useFileStore.getState().refreshFileTree();
+        
+        return notePath;
+      },
+      
+      updateCell: async (dbId: string, rowId: string, columnId: string, value: CellValue) => {
+        const db = get().databases[dbId];
+        if (!db) return;
+        
+        const row = db.rows.find(r => r.id === rowId);
+        if (!row) return;
+        
+        // 找到列名（YAML 使用列名作为键）
+        const column = db.columns.find(c => c.id === columnId);
+        const yamlKey = column?.name || columnId;
+        
+        const now = new Date().toISOString();
+        
+        try {
+          // 读取笔记内容
+          const content = await readFile(row.notePath);
           
+          // 更新 YAML（使用列名）
+          const newContent = updateFrontmatter(content, {
+            [yamlKey]: value,
+            updatedAt: now,
+          });
+          
+          // 保存笔记
+          await saveFile(row.notePath, newContent);
+          
+          // 如果该笔记在编辑器中打开，刷新编辑器内容
+          useFileStore.getState().reloadFileIfOpen(row.notePath);
+          // 如果该笔记在分栏视图中打开，刷新分栏内容
+          useSplitStore.getState().reloadSecondaryIfOpen(row.notePath);
+          
+          // 更新状态（使用列 ID）
+          set((state) => {
+            const currentDb = state.databases[dbId];
+            if (!currentDb) return state;
+            
+            return {
+              databases: {
+                ...state.databases,
+                [dbId]: {
+                  ...currentDb,
+                  rows: currentDb.rows.map(r =>
+                    r.id === rowId
+                      ? { ...r, cells: { ...r.cells, [columnId]: value }, updatedAt: now }
+                      : r
+                  ),
+                }
+              }
+            };
+          });
+        } catch (error) {
+          console.error(`Failed to update cell in ${row.notePath}:`, error);
+        }
+      },
+      
+      deleteRow: async (dbId: string, rowId: string) => {
+        const db = get().databases[dbId];
+        if (!db) return;
+        
+        const row = db.rows.find(r => r.id === rowId);
+        if (!row) return;
+        
+        try {
+          // 读取笔记，移除 db 字段（不删除笔记，只是解除关联）
+          const content = await readFile(row.notePath);
+          const newContent = updateFrontmatter(content, { db: undefined });
+          await saveFile(row.notePath, newContent);
+          
+          // 从状态中移除
+          set((state) => {
+            const currentDb = state.databases[dbId];
+            if (!currentDb) return state;
+            
+            return {
+              databases: {
+                ...state.databases,
+                [dbId]: {
+                  ...currentDb,
+                  rows: currentDb.rows.filter(r => r.id !== rowId),
+                }
+              }
+            };
+          });
+        } catch (error) {
+          console.error(`Failed to remove row ${rowId}:`, error);
+        }
+      },
+      
+      duplicateRow: async (dbId: string, rowId: string) => {
+        const vaultPath = useFileStore.getState().vaultPath;
+        if (!vaultPath) throw new Error("No vault path");
+        
+        const db = get().databases[dbId];
+        if (!db) throw new Error("Database not found");
+        
+        const sourceRow = db.rows.find(r => r.id === rowId);
+        if (!sourceRow) throw new Error("Row not found");
+        
+        const now = new Date().toISOString();
+        const newTitle = `${sourceRow.noteTitle} (副本)`;
+        const notePath = `${vaultPath}/${newTitle.replace(/[\\/:*?"<>|]/g, '-')}.md`;
+        
+        // 复制笔记内容
+        try {
+          const originalContent = await readFile(sourceRow.notePath);
+          const newContent = updateFrontmatter(originalContent, {
+            title: newTitle,
+            createdAt: now,
+            updatedAt: now,
+          });
+          
+          await saveFile(notePath, newContent);
+          
+          // 添加到状态
           const newRow: DatabaseRow = {
-            id: rowId,
-            cells: cells || {},
+            id: notePath,
+            notePath,
+            noteTitle: newTitle,
+            cells: { ...sourceRow.cells, title: newTitle },
             createdAt: now,
             updatedAt: now,
           };
           
-          return {
-            databases: {
-              ...state.databases,
-              [dbId]: {
-                ...db,
-                rows: [...db.rows, newRow],
-                updatedAt: now,
+          set((state) => {
+            const currentDb = state.databases[dbId];
+            if (!currentDb) return state;
+            
+            const sourceIndex = currentDb.rows.findIndex(r => r.id === rowId);
+            const newRows = [...currentDb.rows];
+            newRows.splice(sourceIndex + 1, 0, newRow);
+            
+            return {
+              databases: {
+                ...state.databases,
+                [dbId]: {
+                  ...currentDb,
+                  rows: newRows,
+                }
               }
-            }
-          };
-        });
-        get().saveDatabase(dbId);
-        
-        return rowId;
-      },
-      
-      updateCell: (dbId: string, rowId: string, columnId: string, value: CellValue) => {
-        set((state) => {
-          const db = state.databases[dbId];
-          if (!db) return state;
+            };
+          });
           
-          const now = new Date().toISOString();
+          useFileStore.getState().refreshFileTree();
           
-          return {
-            databases: {
-              ...state.databases,
-              [dbId]: {
-                ...db,
-                rows: db.rows.map(row =>
-                  row.id === rowId
-                    ? {
-                        ...row,
-                        cells: { ...row.cells, [columnId]: value },
-                        updatedAt: now,
-                      }
-                    : row
-                ),
-                updatedAt: now,
-              }
-            }
-          };
-        });
-        // 防抖保存
-        get().saveDatabase(dbId);
-      },
-      
-      deleteRow: (dbId: string, rowId: string) => {
-        set((state) => {
-          const db = state.databases[dbId];
-          if (!db) return state;
-          
-          return {
-            databases: {
-              ...state.databases,
-              [dbId]: {
-                ...db,
-                rows: db.rows.filter(row => row.id !== rowId),
-                updatedAt: new Date().toISOString(),
-              }
-            }
-          };
-        });
-        get().saveDatabase(dbId);
-      },
-      
-      duplicateRow: (dbId: string, rowId: string) => {
-        const newRowId = generateId();
-        const now = new Date().toISOString();
-        
-        set((state) => {
-          const db = state.databases[dbId];
-          if (!db) return state;
-          
-          const sourceRow = db.rows.find(r => r.id === rowId);
-          if (!sourceRow) return state;
-          
-          const newRow: DatabaseRow = {
-            id: newRowId,
-            cells: { ...sourceRow.cells },
-            createdAt: now,
-            updatedAt: now,
-          };
-          
-          const sourceIndex = db.rows.findIndex(r => r.id === rowId);
-          const newRows = [...db.rows];
-          newRows.splice(sourceIndex + 1, 0, newRow);
-          
-          return {
-            databases: {
-              ...state.databases,
-              [dbId]: {
-                ...db,
-                rows: newRows,
-                updatedAt: now,
-              }
-            }
-          };
-        });
-        get().saveDatabase(dbId);
-        
-        return newRowId;
+          return notePath;
+        } catch (error) {
+          console.error(`Failed to duplicate row:`, error);
+          throw error;
+        }
       },
       
       reorderRows: (dbId: string, rowIds: string[]) => {

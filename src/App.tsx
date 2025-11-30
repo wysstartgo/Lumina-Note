@@ -18,7 +18,7 @@ import { TabBar } from "@/components/TabBar";
 import { DiffView } from "@/components/DiffView";
 import { AIFloatingBall } from "@/components/AIFloatingBall";
 import { VideoNoteView } from "@/components/VideoNoteView";
-import { DatabaseView, CreateDatabaseDialog } from "@/components/database";
+import { DatabaseView, CreateDatabaseDialog, DatabaseSplitView } from "@/components/database";
 import { useAIStore } from "@/stores/useAIStore";
 import { saveFile } from "@/lib/tauri";
 
@@ -326,10 +326,16 @@ function App() {
           // Show diff view when there's a pending AI edit
           <DiffViewWrapper />
         ) : activeTab?.type === "database" && activeTab.databaseId ? (
-          // 数据库标签页
+          // 数据库标签页（支持分栏）
           <div className="flex-1 flex flex-col overflow-hidden bg-background">
             <TabBar />
-            <DatabaseView dbId={activeTab.databaseId} className="flex-1" />
+            {splitView ? (
+              // 数据库 + 分栏：左边数据库，右边笔记
+              <DatabaseSplitView dbId={activeTab.databaseId} />
+            ) : (
+              // 纯数据库
+              <DatabaseView dbId={activeTab.databaseId} className="flex-1" />
+            )}
           </div>
         ) : activeTab?.type === "video-note" ? (
           // 视频笔记标签页

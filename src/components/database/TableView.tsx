@@ -1,8 +1,10 @@
 import { useState, useRef, useCallback, useMemo } from "react";
 import { useDatabaseStore } from "@/stores/useDatabaseStore";
+import { useUIStore } from "@/stores/useUIStore";
+import { useSplitStore } from "@/stores/useSplitStore";
 import { DatabaseCell } from "./cells/DatabaseCell";
 import { ColumnHeader } from "./ColumnHeader";
-import { Plus, MoreHorizontal, Trash2, Copy } from "lucide-react";
+import { Plus, MoreHorizontal, Trash2, Copy, FileText } from "lucide-react";
 
 interface TableViewProps {
   dbId: string;
@@ -23,6 +25,10 @@ export function TableView({ dbId }: TableViewProps) {
   const db = databases[dbId];
   const rows = useMemo(() => getFilteredSortedRows(dbId), [dbId, getFilteredSortedRows, db?.rows, db?.views]);
   
+  // 分栏视图
+  const { splitView, toggleSplitView } = useUIStore();
+  const { openSecondaryFile } = useSplitStore();
+  
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
   const [rowMenuOpen, setRowMenuOpen] = useState<string | null>(null);
   const [, setDraggedColumn] = useState<string | null>(null);
@@ -40,6 +46,14 @@ export function TableView({ dbId }: TableViewProps) {
   const handleCellBlur = useCallback(() => {
     setEditingCell(null);
   }, [setEditingCell]);
+  
+  // 在分栏中打开笔记
+  const handleOpenInSplit = useCallback((notePath: string) => {
+    if (!splitView) {
+      toggleSplitView();
+    }
+    openSecondaryFile(notePath);
+  }, [splitView, toggleSplitView, openSecondaryFile]);
   
   if (!db) return null;
   
@@ -127,7 +141,7 @@ export function TableView({ dbId }: TableViewProps) {
               </td>
               
               {/* 数据单元格 */}
-              {columns.map((column) => (
+              {columns.map((column, colIndex) => (
                 <td
                   key={column.id}
                   className={`p-0 border-b border-r border-border ${
@@ -138,14 +152,31 @@ export function TableView({ dbId }: TableViewProps) {
                   style={{ width: column.width || 180, minWidth: 100 }}
                   onClick={() => handleCellClick(row.id, column.id)}
                 >
-                  <DatabaseCell
-                    dbId={dbId}
-                    column={column}
-                    rowId={row.id}
-                    value={row.cells[column.id]}
-                    isEditing={editingCell?.rowId === row.id && editingCell?.columnId === column.id}
-                    onBlur={handleCellBlur}
-                  />
+                  <div className="flex items-center">
+                    <div className="flex-1">
+                      <DatabaseCell
+                        dbId={dbId}
+                        column={column}
+                        rowId={row.id}
+                        value={row.cells[column.id]}
+                        isEditing={editingCell?.rowId === row.id && editingCell?.columnId === column.id}
+                        onBlur={handleCellBlur}
+                      />
+                    </div>
+                    {/* 第一列显示打开笔记按钮 */}
+                    {colIndex === 0 && hoveredRow === row.id && row.notePath && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenInSplit(row.notePath);
+                        }}
+                        className="p-1 mr-1 rounded hover:bg-accent text-muted-foreground hover:text-primary transition-colors"
+                        title="在分栏中打开笔记"
+                      >
+                        <FileText className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </td>
               ))}
               

@@ -1,6 +1,10 @@
 /**
- * Notion-style Database Types
- * 存储格式：vault/Databases/*.db.json
+ * Dataview-style Database Types
+ * 
+ * 架构：笔记 YAML frontmatter = 真相来源
+ * - 数据库定义：vault/Databases/*.db.json（只存列定义，不存数据）
+ * - 行数据：从笔记 YAML 动态读取
+ * - 双向同步：编辑表格 → 写回笔记 YAML
  */
 
 // ==================== 列类型定义 ====================
@@ -68,9 +72,24 @@ export interface DateValue {
 
 // ==================== 行数据 ====================
 
+/**
+ * 数据库行（从笔记 YAML 动态读取）
+ */
 export interface DatabaseRow {
+  id: string;                        // 笔记路径作为 ID
+  notePath: string;                  // 笔记文件路径
+  noteTitle: string;                 // 笔记标题（从文件名或 YAML title 读取）
+  cells: Record<string, CellValue>;  // columnId/columnName -> value
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * 兼容旧版本的行数据（用于迁移）
+ */
+export interface LegacyDatabaseRow {
   id: string;
-  cells: Record<string, CellValue>; // columnId -> value
+  cells: Record<string, CellValue>;
   createdAt: string;
   updatedAt: string;
 }
@@ -129,6 +148,10 @@ export interface FilterGroup {
 
 // ==================== 数据库主体 ====================
 
+/**
+ * 数据库定义（只存结构，不存数据）
+ * 行数据从笔记 YAML 动态读取
+ */
 export interface Database {
   id: string;
   name: string;
@@ -138,14 +161,37 @@ export interface Database {
   // 列定义
   columns: DatabaseColumn[];
   
-  // 行数据
-  rows: DatabaseRow[];
+  // 注意：不再存储 rows，数据从笔记 YAML 动态读取
+  // rows 字段仅用于兼容旧版本，加载时会忽略
   
   // 视图列表
   views: DatabaseView[];
   activeViewId: string;
   
   // 元数据
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * 运行时数据库状态（包含动态加载的行）
+ */
+export interface DatabaseWithRows extends Database {
+  rows: DatabaseRow[];  // 从笔记动态加载的行
+}
+
+/**
+ * 旧版数据库格式（用于迁移）
+ */
+export interface LegacyDatabase {
+  id: string;
+  name: string;
+  icon?: string;
+  description?: string;
+  columns: DatabaseColumn[];
+  rows: LegacyDatabaseRow[];  // 旧版直接存储行
+  views: DatabaseView[];
+  activeViewId: string;
   createdAt: string;
   updatedAt: string;
 }
