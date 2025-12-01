@@ -20,6 +20,7 @@ import {
   AppWindow,
   Database,
   Image,
+  FileText,
 } from "lucide-react";
 
 interface ContextMenuState {
@@ -36,7 +37,7 @@ interface CreatingState {
 }
 
 export function Sidebar() {
-  const { vaultPath, fileTree, currentFile, openFile, refreshFileTree, isLoadingTree, closeFile, openDatabaseTab } =
+  const { vaultPath, fileTree, currentFile, openFile, refreshFileTree, isLoadingTree, closeFile, openDatabaseTab, openPDFTab } =
     useFileStore();
   const { config: ragConfig, isIndexing: ragIsIndexing, indexStatus } = useRAGStore();
   
@@ -363,17 +364,21 @@ export function Sidebar() {
   const handleSelect = useCallback((entry: FileEntry) => {
     setSelectedPath(entry.path);
     if (!entry.is_dir) {
+      const name = entry.name.toLowerCase();
       // 检查是否是数据库文件
-      if (entry.name.endsWith('.db.json')) {
+      if (name.endsWith('.db.json')) {
         // 从文件名提取数据库 ID（去掉 .db.json 后缀）
         const dbId = entry.name.replace('.db.json', '');
         const dbName = dbId; // 可以后续从文件内容读取真实名称
         openDatabaseTab(dbId, dbName);
+      } else if (name.endsWith('.pdf')) {
+        // PDF 文件
+        openPDFTab(entry.path);
       } else {
         openFile(entry.path);
       }
     }
-  }, [openFile, openDatabaseTab]);
+  }, [openFile, openDatabaseTab, openPDFTab]);
 
   return (
     <aside className="w-full h-full border-r border-border flex flex-col bg-muted/30 transition-colors duration-300">
@@ -786,6 +791,9 @@ function FileTreeItem({
     const name = entry.name.toLowerCase();
     if (name.endsWith('.db.json')) {
       return <Database className="w-4 h-4 text-slate-500 shrink-0" />;
+    }
+    if (name.endsWith('.pdf')) {
+      return <FileText className="w-4 h-4 text-red-500 shrink-0" />;
     }
     if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.gif') || name.endsWith('.webp')) {
       return <Image className="w-4 h-4 text-green-500 shrink-0" />;

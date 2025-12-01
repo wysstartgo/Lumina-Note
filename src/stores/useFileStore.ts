@@ -11,7 +11,7 @@ interface HistoryEntry {
 }
 
 // 标签页类型
-export type TabType = "file" | "graph" | "isolated-graph" | "video-note" | "database";
+export type TabType = "file" | "graph" | "isolated-graph" | "video-note" | "database" | "pdf";
 
 // 孤立视图节点信息
 export interface IsolatedNodeInfo {
@@ -34,6 +34,7 @@ export interface Tab {
   isolatedNode?: IsolatedNodeInfo; // 孤立视图的目标节点
   videoUrl?: string; // 视频笔记的 URL
   databaseId?: string; // 数据库 ID
+  pdfPath?: string; // PDF 文件路径
 }
 
 interface FileState {
@@ -90,6 +91,7 @@ interface FileState {
   openIsolatedGraphTab: (node: IsolatedNodeInfo) => void;
   openVideoNoteTab: (url: string, title?: string) => void;
   openDatabaseTab: (dbId: string, dbName: string) => void;
+  openPDFTab: (pdfPath: string) => void;
   
   // Undo/Redo actions
   undo: () => void;
@@ -697,6 +699,78 @@ export const useFileStore = create<FileState>()(
     };
     
     updatedTabs.push(dbTab);
+    
+    set({
+      tabs: updatedTabs,
+      activeTabIndex: updatedTabs.length - 1,
+      currentFile: null,
+      currentContent: "",
+      isDirty: false,
+    });
+  },
+
+  // 打开 PDF 标签页
+  openPDFTab: (pdfPath: string) => {
+    const { tabs, activeTabIndex, currentContent, isDirty, undoStack, redoStack } = get();
+    
+    // 检查是否已有此 PDF 的标签页
+    const existingPdfIndex = tabs.findIndex(t => t.type === "pdf" && t.pdfPath === pdfPath);
+    
+    if (existingPdfIndex >= 0) {
+      // 已有此 PDF 标签页，直接切换
+      let updatedTabs = [...tabs];
+      
+      // 保存当前标签页状态
+      if (activeTabIndex >= 0 && tabs[activeTabIndex]) {
+        updatedTabs[activeTabIndex] = {
+          ...updatedTabs[activeTabIndex],
+          content: currentContent,
+          isDirty,
+          undoStack,
+          redoStack,
+        };
+      }
+      
+      set({
+        tabs: updatedTabs,
+        activeTabIndex: existingPdfIndex,
+        currentFile: null,
+        currentContent: "",
+        isDirty: false,
+      });
+      return;
+    }
+    
+    // 创建新 PDF 标签页
+    const fileName = pdfPath.split(/[/\\]/).pop() || "PDF";
+    const tabId = `__pdf_${Date.now()}__`;
+    
+    // 保存当前标签页状态
+    let updatedTabs = [...tabs];
+    if (activeTabIndex >= 0 && tabs[activeTabIndex]) {
+      updatedTabs[activeTabIndex] = {
+        ...updatedTabs[activeTabIndex],
+        content: currentContent,
+        isDirty,
+        undoStack,
+        redoStack,
+      };
+    }
+    
+    // 创建 PDF 标签页
+    const pdfTab: Tab = {
+      id: tabId,
+      type: "pdf",
+      path: pdfPath,
+      name: fileName,
+      content: "",
+      isDirty: false,
+      undoStack: [],
+      redoStack: [],
+      pdfPath: pdfPath,
+    };
+    
+    updatedTabs.push(pdfTab);
     
     set({
       tabs: updatedTabs,

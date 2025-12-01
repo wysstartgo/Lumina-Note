@@ -30,7 +30,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; img-src 'self' data: blob: https://*.hdslb.com https://*.bilibili.com; media-src 'self' blob: https://*.bilibili.com; frame-src https://player.bilibili.com https://*.bilibili.com; connect-src 'self' https:;"
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: asset: https://unpkg.com; img-src 'self' data: blob: asset: https://*.hdslb.com https://*.bilibili.com; media-src 'self' blob: asset: https://*.bilibili.com; frame-src https://player.bilibili.com https://*.bilibili.com; connect-src 'self' https: asset:; worker-src 'self' blob: https://unpkg.com;"
     }
   },
   "plugins": {

@@ -57,113 +57,37 @@
 
 ### 2.1 方案对比总览
 
-| 特性 | DeepSeek-OCR | PP-Structure | MinerU |
-|------|-------------|--------------|--------|
-| **推荐度** | ⭐⭐⭐ 首选 | ⭐⭐ 轻量备选 | ⭐ 功能全但重 |
-| 模型架构 | 单模型端到端 | 多模型组合 | 多模型组合 |
-| 参数量 | **3B** | - | - |
-| 模型大小 | ~6GB (FP16) | ~500MB | ~1-2GB |
-| bbox 坐标 | ✅ (grounding) | ✅ | ✅ |
+| 特性 | PP-Structure | 云端 API | DeepSeek-OCR |
+|------|--------------|----------|-------------|
+| **推荐度** | ⭐⭐⭐ 首选 | ⭐⭐ 便捷备选 | ⭐ 本地高质量 |
+| 模型架构 | 多模型组合 | 云端服务 | 单模型端到端 |
+| 模型大小 | ~500MB | 无需下载 | ~6GB (FP16) |
+| bbox 坐标 | ✅ | ✅ | ✅ (grounding) |
 | 表格识别 | ✅ | ✅ | ✅ |
-| 公式识别 | ✅ LaTeX | ✅ | ✅ |
+| 公式识别 | ✅ | ✅ | ✅ LaTeX |
 | 图片定位 | ✅ | ✅ | ✅ |
-| 理解能力 | **强**（VLM） | 中 | 中 |
-| 显存要求 | 8GB+ | 2-4GB | 4-8GB |
-| CPU 可用 | 可行但慢 | ✅ | 可行 |
-| 部署难度 | 简单 | 简单 | 中等 |
+| 理解能力 | 中 | 强 | **强**（VLM） |
+| 硬件要求 | CPU 可运行 | 无 | 8GB+ GPU |
+| 网络要求 | 无 | 需联网 | 无 |
+| 部署难度 | 简单 | 最简单 | 中等 |
 
-### 2.2 首选方案：DeepSeek-OCR
+### 2.2 首选方案：PP-Structure
 
-[DeepSeek-OCR](https://github.com/deepseek-ai/DeepSeek-OCR) 是深度求索推出的视觉语言模型，专注于 OCR 与"上下文光学压缩"。
+[PP-Structure](https://github.com/PaddlePaddle/PaddleOCR/tree/main/ppstructure) 是 PaddleOCR 的文档分析模块，轻量高效。
 
 #### 核心优势
 
-1. **单模型端到端** - 不需要多个模型配合
-2. **支持 Grounding** - 输出元素的 bbox 坐标
-3. **3B 参数** - 大小适中，消费级显卡可跑
-4. **理解能力强** - VLM 架构，不只是 OCR
-5. **官方支持 vLLM** - 高效推理
-
-#### Prompt 模式
-
-```python
-# 文档转 Markdown + bbox 定位 ✅ 推荐
-"<image>\n<|grounding|>Convert the document to markdown."
-
-# 图片 OCR + 定位
-"<image>\n<|grounding|>OCR this image."
-
-# 纯 OCR（无布局信息）
-"<image>\nFree OCR."
-
-# 解析图表
-"<image>\nParse the figure."
-
-# 定位特定文本（高级功能）
-"<image>\nLocate <|ref|>先天下之忧而忧<|/ref|> in the image."
-```
-
-#### 分辨率支持
-
-| 模式 | 分辨率 | Vision Tokens | 适用场景 |
-|------|--------|---------------|---------|
-| Tiny | 512×512 | 64 | 快速预览 |
-| Small | 640×640 | 100 | 一般文档 |
-| Base | 1024×1024 | 256 | 高清文档 |
-| Large | 1280×1280 | 400 | 复杂图表 |
-| Dynamic | n×640 + 1024 | 动态 | 长文档 |
-
-#### 硬件要求
-
-```
-推荐配置：
-├── GPU: RTX 4070+ (12GB+)
-├── RAM: 16GB+
-└── 速度: A100-40G 约 2500 tokens/s
-
-最低配置（量化后）：
-├── GPU: RTX 3060 (8GB) - INT8 量化
-├── 或 CPU: 32GB RAM - 很慢但可用
-└── 量化版: INT4 约 1.5GB
-```
-
-#### 部署方式
-
-```python
-# 方式 1: vLLM（高性能，推荐）
-from vllm import LLM, SamplingParams
-from vllm.model_executor.models.deepseek_ocr import NGramPerReqLogitsProcessor
-
-llm = LLM(
-    model="deepseek-ai/DeepSeek-OCR",
-    enable_prefix_caching=False,
-)
-
-prompt = "<image>\n<|grounding|>Convert the document to markdown."
-# ... 推理代码
-
-# 方式 2: Transformers（简单）
-from transformers import AutoModel, AutoTokenizer
-import torch
-
-model = AutoModel.from_pretrained(
-    "deepseek-ai/DeepSeek-OCR",
-    trust_remote_code=True
-).eval().cuda().to(torch.bfloat16)
-
-prompt = "<image>\n<|grounding|>Convert the document to markdown."
-res = model.infer(tokenizer, prompt=prompt, image_file=image_path)
-```
-
-### 2.3 轻量备选：PP-Structure
-
-[PP-Structure](https://github.com/PaddlePaddle/PaddleOCR/tree/main/ppstructure) 是 PaddleOCR 的文档分析模块。
+1. **模型极小** - 仅 ~500MB，下载快
+2. **CPU 可运行** - 无需 GPU，兼容性强
+3. **部署简单** - pip 安装即可
+4. **bbox 坐标** - 输出元素定位信息
+5. **表格/公式支持** - 功能完整
 
 #### 适用场景
 
 - 用户设备没有独立显卡
 - 需要快速轻量的解析
-- 不需要深度语义理解
+- 大多数常规文档
 
 #### 输出格式
 
@@ -188,7 +112,83 @@ res = model.infer(tokenizer, prompt=prompt, image_file=image_path)
 }
 ```
 
-### 2.4 其他参考项目
+### 2.3 便捷备选：云端 API
+
+使用云端文档解析 API，无需本地部署。
+
+#### 核心优势
+
+1. **零部署** - 无需下载模型
+2. **高质量** - 云端算力强，效果好
+3. **即开即用** - 配置 API Key 即可
+
+#### 可选服务
+
+| 服务 | 特点 | 定价参考 |
+|------|------|----------|
+| Mathpix | 学术 PDF 专精，公式强 | 按页计费 |
+| Adobe PDF Services | 官方品质 | 按页计费 |
+| 腾讯云文档识别 | 国内访问快 | 按调用量 |
+| 阿里云文档智能 | 国内访问快 | 按调用量 |
+
+#### 适用场景
+
+- 偶尔使用，不想安装模型
+- 对解析质量要求高
+- 网络环境良好
+
+#### 注意事项
+
+- 需要联网
+- 有 API 调用费用
+- 文档会上传到云端（注意隐私）
+
+### 2.4 本地高质量方案：DeepSeek-OCR
+
+[DeepSeek-OCR](https://github.com/deepseek-ai/DeepSeek-OCR) 是深度求索推出的视觉语言模型，专注于 OCR 与"上下文光学压缩"。
+
+#### 核心优势
+
+1. **单模型端到端** - 不需要多个模型配合
+2. **支持 Grounding** - 输出元素的 bbox 坐标
+3. **3B 参数** - 理解能力强
+4. **VLM 架构** - 不只是 OCR，还能理解内容
+5. **官方支持 vLLM** - 高效推理
+
+#### 硬件要求
+
+```
+推荐配置：
+├── GPU: RTX 4070+ (12GB+)
+├── RAM: 16GB+
+└── 模型大小: ~6GB (FP16)
+
+最低配置（量化后）：
+├── GPU: RTX 3060 (8GB) - INT8 量化
+├── 量化版: INT4 约 1.5GB
+```
+
+#### 适用场景
+
+- 有独立显卡（8GB+）
+- 需要高质量解析和理解
+- 重度 PDF 阅读用户
+- 注重隐私，不想上传云端
+
+#### Prompt 模式
+
+```python
+# 文档转 Markdown + bbox 定位
+"<image>\n<|grounding|>Convert the document to markdown."
+
+# 图片 OCR + 定位
+"<image>\n<|grounding|>OCR this image."
+
+# 解析图表
+"<image>\nParse the figure."
+```
+
+### 2.5 其他参考项目
 
 | 项目 | 特点 | 是否考虑 |
 |------|------|---------|
@@ -196,7 +196,7 @@ res = model.infer(tokenizer, prompt=prompt, image_file=image_path)
 | GOT-OCR | 端到端 OCR | 待评估 |
 | Nougat | Meta 出品，学术 PDF 转 LaTeX | 特定场景 |
 
-### 2.5 推荐策略
+### 2.6 推荐策略
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -210,17 +210,17 @@ res = model.infer(tokenizer, prompt=prompt, image_file=image_path)
 │   ┌─────────────────────────────────────────────────────┐  │
 │   │  选择解析后端：                                      │  │
 │   │                                                     │  │
-│   │  🚀 DeepSeek-OCR（推荐）                            │  │
-│   │     - 需要 GPU 8GB+                                 │  │
-│   │     - 首次需下载模型 (~6GB)                         │  │
-│   │                                                     │  │
-│   │  ⚡ PP-Structure（轻量）                            │  │
-│   │     - CPU 可运行                                    │  │
+│   │  ⚡ PP-Structure（推荐）                            │  │
+│   │     - CPU 可运行，无需 GPU                          │  │
 │   │     - 模型较小 (~500MB)                             │  │
 │   │                                                     │  │
-│   │  ☁️ 云端 API                                        │  │
+│   │  ☁️ 云端 API（便捷）                                │  │
 │   │     - 无需本地模型                                   │  │
-│   │     - 需要联网                                       │  │
+│   │     - 需要联网和 API Key                            │  │
+│   │                                                     │  │
+│   │  🚀 DeepSeek-OCR（高质量）                          │  │
+│   │     - 需要 GPU 8GB+                                 │  │
+│   │     - 首次需下载模型 (~6GB)                         │  │
 │   │                                                     │  │
 │   │  📦 跳过（仅基础阅读）                              │  │
 │   └─────────────────────────────────────────────────────┘  │
@@ -568,7 +568,49 @@ fn get_cached_structure(pdf_path: &str) -> Option<PDFStructure> {
 
 ---
 
-## 七、开发计划
+## 七、架构约定
+
+### 7.1 Tabbar 控制
+
+PDF 阅读器作为一个独立的 Tab 类型，需要遵循现有的 Tabbar 控制架构：
+
+```typescript
+// Tab 类型扩展
+type TabType = 'note' | 'database' | 'pdf';  // 新增 'pdf' 类型
+
+interface Tab {
+  id: string;
+  type: TabType;
+  title: string;
+  path: string;       // PDF 文件路径
+  isDirty?: boolean;  // PDF 不需要此字段
+}
+```
+
+- PDF 通过 `useTabStore` 打开/切换/关闭
+- 支持多个 PDF 同时打开（多 Tab）
+- Tab 标题显示 PDF 文件名
+
+### 7.2 与现有模块集成
+
+| 模块 | 集成方式 |
+|------|---------|
+| **FileTree** | 双击 `.pdf` 文件 → 打开 PDF Tab |
+| **RightPanel** | PDF 引用侧边栏复用右侧面板位置 |
+| **AI 对话** | 复用现有 `useChatSend` 和 `ChatPanel` |
+| **Tabbar** | 复用 `useTabStore` 管理 PDF Tab |
+
+### 7.3 路由/状态管理
+
+```
+src/stores/
+├── useTabStore.ts      # 扩展支持 PDF Tab
+└── usePDFStore.ts      # 新增 PDF 专用状态
+```
+
+---
+
+## 八、开发计划
 
 ### Phase 1：基础 PDF 查看器（1-2 天）
 
@@ -577,11 +619,12 @@ fn get_cached_structure(pdf_path: &str) -> Option<PDFStructure> {
 - [ ] 翻页/缩放控制
 - [ ] 文本选择/搜索
 
-### Phase 2：MinerU 集成（2-3 天）
+### Phase 2：PP-Structure 集成（2-3 天）
 
-- [ ] Rust 后端调用 MinerU
+- [ ] Rust 后端调用 PP-Structure
 - [ ] 解析结果缓存
 - [ ] 结构化数据接口
+- [ ] （可选）云端 API 备选接入
 
 ### Phase 3：交互层实现（2-3 天）
 
@@ -611,7 +654,7 @@ fn get_cached_structure(pdf_path: &str) -> Option<PDFStructure> {
 
 ---
 
-## 八、依赖清单
+## 九、依赖清单
 
 ### 前端
 
@@ -624,38 +667,40 @@ fn get_cached_structure(pdf_path: &str) -> Option<PDFStructure> {
 
 ### 后端/工具
 
-- **MinerU**: `pip install magic-pdf[full]`
-- 或 Docker: `opendatalab/mineru`
+- **PP-Structure（首选）**: `pip install paddlepaddle paddleocr`
+- **云端 API（备选）**: 按需接入 Mathpix / 腾讯云等
+- **DeepSeek-OCR（可选）**: 需 GPU，模型 ~6GB
 
 ### 系统要求
 
-- Python 3.8+（MinerU 运行环境）
-- 约 2-4GB 磁盘空间（模型文件）
+- Python 3.8+（PP-Structure 运行环境）
+- 约 500MB 磁盘空间（PP-Structure 模型）
 
 ---
 
-## 九、参考资料
+## 十、参考资料
 
-- [MinerU GitHub](https://github.com/opendatalab/MinerU)
+- [PP-Structure GitHub](https://github.com/PaddlePaddle/PaddleOCR/tree/main/ppstructure)
+- [DeepSeek-OCR GitHub](https://github.com/deepseek-ai/DeepSeek-OCR)
 - [react-pdf 文档](https://github.com/wojtekmaj/react-pdf)
 - [pdf.js 官方](https://mozilla.github.io/pdf.js/)
 
 ---
 
-## 十、待讨论问题
+## 十一、待讨论问题
 
-1. **MinerU 部署方式**
+1. **PP-Structure 部署方式**
    - 本地 Python 环境？
    - Docker 容器？
-   - 云服务？
+   - 内嵌到 Tauri？
 
 2. **首次解析体验**
-   - MinerU 解析较慢（复杂 PDF 可能需要几十秒）
+   - PP-Structure 解析速度如何？
    - 是否显示进度条？
    - 是否支持取消？
 
 3. **离线支持**
-   - MinerU 需要模型文件
+   - PP-Structure 模型较小（~500MB）
    - 是否打包到应用中？
    - 还是首次使用时下载？
 

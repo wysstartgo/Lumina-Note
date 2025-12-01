@@ -19,6 +19,7 @@ import { DiffView } from "@/components/DiffView";
 import { AIFloatingBall } from "@/components/AIFloatingBall";
 import { VideoNoteView } from "@/components/VideoNoteView";
 import { DatabaseView, CreateDatabaseDialog, DatabaseSplitView } from "@/components/database";
+import { PDFViewer } from "@/components/pdf";
 import { useAIStore } from "@/stores/useAIStore";
 import { saveFile } from "@/lib/tauri";
 import { TitleBar } from "@/components/TitleBar";
@@ -389,6 +390,12 @@ function App() {
               initialUrl={activeTab.videoUrl}
               isActive={true}
             />
+          </div>
+        ) : activeTab?.type === "pdf" && activeTab.pdfPath ? (
+          // PDF 标签页
+          <div className="flex-1 flex flex-col overflow-hidden bg-background">
+            <TabBar />
+            <PDFViewer filePath={activeTab.pdfPath} className="flex-1" />
           </div>
         ) : splitView && currentFile ? (
           // Show split editor when enabled
