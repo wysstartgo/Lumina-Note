@@ -15,6 +15,7 @@ interface PDFToolbarProps {
   onPageChange: (page: number) => void;
   onScaleChange: (scale: number) => void;
   onFitWidth?: () => void;
+  searchSlot?: React.ReactNode;
   className?: string;
 }
 
@@ -27,6 +28,7 @@ export function PDFToolbar({
   onPageChange,
   onScaleChange,
   onFitWidth,
+  searchSlot,
   className,
 }: PDFToolbarProps) {
   const handlePrevPage = () => {
@@ -136,8 +138,10 @@ export function PDFToolbar({
         )}
       </div>
 
-      {/* 其他操作 */}
-      <div className="flex items-center gap-1">
+      {/* 搜索和其他操作 */}
+      <div className="flex items-center gap-2">
+        {searchSlot}
+        {searchSlot && <div className="w-px h-4 bg-border" />}
         <button
           className="p-1.5 rounded hover:bg-accent transition-colors"
           title="旋转"

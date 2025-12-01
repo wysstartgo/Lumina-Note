@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { readFile } from "@tauri-apps/plugin-fs";
 
 // 配置 PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -12,7 +11,8 @@ import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
 interface PDFCanvasProps {
-  filePath: string;
+  pdfData: Uint8Array | null;
+  filePath: string; // 仅用于错误显示
   currentPage: number;
   scale: number;
   onDocumentLoad?: (numPages: number) => void;
@@ -21,6 +21,7 @@ interface PDFCanvasProps {
 }
 
 export function PDFCanvas({
+  pdfData,
   filePath,
   currentPage,
   scale,
@@ -30,43 +31,7 @@ export function PDFCanvas({
 }: PDFCanvasProps) {
   const [numPages, setNumPages] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
-  const [pdfData, setPdfData] = useState<Uint8Array | null>(null);
-  const [loading, setLoading] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  // 使用 Tauri fs 插件读取 PDF 文件
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadPdf = async () => {
-      if (filePath.startsWith("http")) {
-        // 网络 URL 直接使用
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        setError(null);
-        const data = await readFile(filePath);
-        if (!cancelled) {
-          // 复制数据以避免 ArrayBuffer detached 错误
-          const copiedData = new Uint8Array(data);
-          setPdfData(copiedData);
-          setLoading(false);
-        }
-      } catch (err) {
-        console.error("Failed to read PDF file:", err);
-        if (!cancelled) {
-          setError(`读取文件失败: ${err}`);
-          setLoading(false);
-        }
-      }
-    };
-
-    loadPdf();
-    return () => { cancelled = true; };
-  }, [filePath]);
 
   // 处理文档加载
   const handleDocumentLoadSuccess = useCallback(({ numPages }: { numPages: number }) => {
@@ -126,7 +91,7 @@ export function PDFCanvas({
   }
 
   // 正在加载文件
-  if (loading || !pdfSource) {
+  if (!pdfSource) {
     return (
       <div className={cn("flex-1 flex items-center justify-center", className)}>
         <Loader2 className="animate-spin mr-2" />
