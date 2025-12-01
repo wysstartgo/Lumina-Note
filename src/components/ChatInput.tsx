@@ -5,7 +5,8 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useFileStore } from "@/stores/useFileStore";
-import { Send, FileText, Folder, X, Loader2, Paperclip } from "lucide-react";
+import { useAIStore } from "@/stores/useAIStore";
+import { Send, FileText, Folder, X, Loader2, Paperclip, Quote } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // 引用的文件
@@ -41,6 +42,7 @@ export function ChatInput({
   hideSendButton = false,
 }: ChatInputProps) {
   const { fileTree } = useFileStore();
+  const { textSelections, removeTextSelection, clearTextSelections } = useAIStore();
   const [showMention, setShowMention] = useState(false);
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionIndex, setMentionIndex] = useState(0);
@@ -168,12 +170,22 @@ export function ChatInput({
 
   // 发送消息
   const handleSend = () => {
-    if (!value.trim() && referencedFiles.length === 0) return;
+    if (!value.trim() && referencedFiles.length === 0 && textSelections.length === 0) return;
     if (isLoading || isStreaming) return;
     
-    onSend(value.trim(), referencedFiles);
+    // 构建带引用的消息
+    let messageToSend = value.trim();
+    if (textSelections.length > 0) {
+      const quotedTexts = textSelections.map(sel => 
+        `> 引用自 ${sel.source}:\n> ${sel.text.split('\n').join('\n> ')}`
+      ).join('\n\n');
+      messageToSend = quotedTexts + (messageToSend ? `\n\n${messageToSend}` : '');
+    }
+    
+    onSend(messageToSend, referencedFiles);
     onChange("");
     setReferencedFiles([]);
+    clearTextSelections();
   };
 
   // 点击外部关闭菜单
@@ -196,9 +208,10 @@ export function ChatInput({
     <div
       className={cn("relative", className)}
     >
-      {/* 已引用的文件标签 */}
-      {referencedFiles.length > 0 && (
+      {/* 已引用的文件和文本片段标签 */}
+      {(referencedFiles.length > 0 || textSelections.length > 0) && (
         <div className="flex flex-wrap gap-1 mb-2">
+          {/* 文件引用 */}
           {referencedFiles.map(file => (
             <div
               key={file.path}
@@ -209,6 +222,24 @@ export function ChatInput({
               <button
                 onClick={() => removeReference(file.path)}
                 className="hover:bg-primary/20 rounded p-0.5"
+              >
+                <X size={10} />
+              </button>
+            </div>
+          ))}
+          {/* 文本片段引用 */}
+          {textSelections.map(sel => (
+            <div
+              key={sel.id}
+              className="flex items-center gap-1 px-2 py-1 bg-accent text-accent-foreground rounded-md text-xs max-w-[200px]"
+              title={sel.text}
+            >
+              <Quote size={12} className="shrink-0" />
+              <span className="truncate">{sel.text.slice(0, 30)}{sel.text.length > 30 ? '...' : ''}</span>
+              <span className="text-muted-foreground shrink-0">({sel.source})</span>
+              <button
+                onClick={() => removeTextSelection(sel.id)}
+                className="hover:bg-accent/80 rounded p-0.5 shrink-0"
               >
                 <X size={10} />
               </button>

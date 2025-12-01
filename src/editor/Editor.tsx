@@ -4,6 +4,7 @@ import { useUIStore, EditorMode } from "@/stores/useUIStore";
 import { debounce, getFileName } from "@/lib/utils";
 import { ReadingView } from "./ReadingView";
 import { CodeMirrorEditor, CodeMirrorEditorRef } from "./CodeMirrorEditor";
+import { SelectionToolbar } from "@/components/SelectionToolbar";
 import { 
   Sidebar, 
   MessageSquare, 
@@ -269,7 +270,10 @@ export function Editor() {
       </div>
 
       {/* Editor area - different modes */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-auto">
+      <div ref={scrollContainerRef} className="flex-1 overflow-auto relative">
+        {/* Selection Toolbar - Add to Chat */}
+        <SelectionToolbar containerRef={scrollContainerRef} />
+        
         <div className="max-w-3xl mx-auto px-6 py-4 editor-mode-container">
           {editorMode === "reading" && (
             <div key="reading" className="editor-mode-content">

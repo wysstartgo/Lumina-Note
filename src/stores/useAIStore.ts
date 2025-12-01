@@ -25,6 +25,14 @@ export interface PendingDiff {
   description: string;
 }
 
+// 文本片段引用 (Add to Chat)
+export interface TextSelection {
+  id: string;
+  text: string;
+  source: string;  // 来源文件名
+  sourcePath?: string;  // 来源文件路径
+}
+
 // Token usage tracking
 export interface TokenUsage {
   prompt: number;
@@ -106,6 +114,12 @@ interface AIState {
   setPendingDiff: (diff: PendingDiff | null) => void;
   diffResolver: ((approved: boolean) => void) | null;
   setDiffResolver: (resolver: ((approved: boolean) => void) | null) => void;
+
+  // Text selections (Add to Chat)
+  textSelections: TextSelection[];
+  addTextSelection: (text: string, source: string, sourcePath?: string) => void;
+  removeTextSelection: (id: string) => void;
+  clearTextSelections: () => void;
 
   // Actions
   sendMessage: (content: string, currentFile?: { path: string; name: string; content: string }) => Promise<void>;
@@ -244,6 +258,23 @@ export const useAIStore = create<AIState>()(
       diffResolver: null,
       setDiffResolver: (resolver) => {
         set({ diffResolver: resolver });
+      },
+
+      // Text selections (Add to Chat)
+      textSelections: [],
+      addTextSelection: (text, source, sourcePath) => {
+        const id = `sel-${Date.now()}`;
+        set((state) => ({
+          textSelections: [...state.textSelections, { id, text, source, sourcePath }],
+        }));
+      },
+      removeTextSelection: (id) => {
+        set((state) => ({
+          textSelections: state.textSelections.filter((s) => s.id !== id),
+        }));
+      },
+      clearTextSelections: () => {
+        set({ textSelections: [] });
       },
 
       // Send message
