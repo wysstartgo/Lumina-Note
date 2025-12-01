@@ -1,12 +1,14 @@
 /**
  * 设置面板
  * 在屏幕中央显示的模态框
+ * 带有 iOS 18 风格液态玻璃 + 雨滴效果
  */
 
 import { useUIStore } from "@/stores/useUIStore";
 import { useAIStore } from "@/stores/useAIStore";
 import { OFFICIAL_THEMES } from "@/lib/themes";
 import { X, Check } from "lucide-react";
+import { LiquidGlassEffect } from "./LiquidGlassEffect";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -21,27 +23,68 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* 背景遮罩 */}
+      {/* 背景遮罩 - 液态玻璃效果 */}
       <div 
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/30 backdrop-blur-xl"
         onClick={onClose}
-      />
+        style={{
+          backdropFilter: "blur(20px) saturate(180%)",
+          WebkitBackdropFilter: "blur(20px) saturate(180%)",
+        }}
+      >
+        {/* 雨滴效果层 */}
+        <LiquidGlassEffect />
+      </div>
       
-      {/* 设置面板 */}
-      <div className="relative w-[600px] max-h-[80vh] bg-background border border-border rounded-xl shadow-2xl overflow-hidden">
-        {/* 标题栏 */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h2 className="text-lg font-semibold">设置</h2>
+      {/* 设置面板 - 液态玻璃风格 */}
+      <div 
+        className="relative w-[600px] max-h-[80vh] rounded-2xl shadow-2xl overflow-hidden border border-white/20"
+        style={{
+          background: "linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)",
+          backdropFilter: "blur(40px) saturate(150%)",
+          WebkitBackdropFilter: "blur(40px) saturate(150%)",
+          boxShadow: `
+            0 8px 32px rgba(0, 0, 0, 0.3),
+            inset 0 1px 0 rgba(255, 255, 255, 0.2),
+            inset 0 -1px 0 rgba(0, 0, 0, 0.1)
+          `,
+        }}
+      >
+        {/* 顶部高光 */}
+        <div 
+          className="absolute inset-x-0 top-0 h-px"
+          style={{
+            background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%)",
+          }}
+        />
+        {/* 标题栏 - 液态玻璃风格 */}
+        <div 
+          className="relative flex items-center justify-between px-6 py-4"
+          style={{
+            borderBottom: "1px solid rgba(255,255,255,0.1)",
+            background: "linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 100%)",
+          }}
+        >
+          <h2 className="text-lg font-semibold text-foreground/90">设置</h2>
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-muted transition-colors"
+            className="p-2 rounded-full transition-all hover:scale-110"
+            style={{
+              background: "rgba(255,255,255,0.1)",
+              backdropFilter: "blur(10px)",
+            }}
           >
-            <X size={20} className="text-muted-foreground" />
+            <X size={18} className="text-foreground/70" />
           </button>
         </div>
 
-        {/* 设置内容 */}
-        <div className="p-6 space-y-8 overflow-y-auto max-h-[calc(80vh-60px)]">
+        {/* 设置内容 - 带内容区域液态效果 */}
+        <div 
+          className="p-6 space-y-8 overflow-y-auto max-h-[calc(80vh-60px)]"
+          style={{
+            background: "linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.05) 100%)",
+          }}
+        >
           {/* 主题设置 */}
           <section className="space-y-4">
             <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
@@ -55,11 +98,21 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <button
                   key={theme.id}
                   onClick={() => setThemeId(theme.id)}
-                  className={`relative p-3 rounded-lg border-2 transition-all text-left ${
+                  className={`relative p-3 rounded-xl transition-all text-left ${
                     themeId === theme.id
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50 hover:bg-muted/50"
+                      ? "ring-2 ring-primary"
+                      : "hover:scale-[1.02]"
                   }`}
+                  style={{
+                    background: themeId === theme.id 
+                      ? "rgba(var(--primary-rgb), 0.15)" 
+                      : "rgba(255,255,255,0.05)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    backdropFilter: "blur(10px)",
+                    boxShadow: themeId === theme.id 
+                      ? "0 4px 20px rgba(var(--primary-rgb), 0.2)" 
+                      : "0 2px 10px rgba(0,0,0,0.1)",
+                  }}
                 >
                   {/* 颜色预览 */}
                   <div className="flex gap-1 mb-2">
@@ -103,7 +156,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <select
                 value={editorMode}
                 onChange={(e) => setEditorMode(e.target.value as any)}
-                className="px-3 py-1.5 bg-muted border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                className="px-3 py-1.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                style={{
+                  background: "rgba(255,255,255,0.1)",
+                  border: "1px solid rgba(255,255,255,0.15)",
+                  backdropFilter: "blur(10px)",
+                }}
               >
                 <option value="live">实时预览</option>
                 <option value="source">源码模式</option>
@@ -123,7 +181,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <p className="font-medium">当前模型</p>
                 <p className="text-sm text-muted-foreground">在右侧面板中配置更多选项</p>
               </div>
-              <span className="text-sm text-muted-foreground bg-muted px-3 py-1.5 rounded-md">
+              <span 
+                className="text-sm text-foreground/70 px-3 py-1.5 rounded-lg"
+                style={{
+                  background: "rgba(255,255,255,0.1)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                }}
+              >
                 {config.model || "未配置"}
               </span>
             </div>
