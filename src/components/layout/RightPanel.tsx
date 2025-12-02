@@ -21,9 +21,9 @@ import {
   ChevronRight,
   Bot,
 } from "lucide-react";
-import { AgentPanel } from "./AgentPanel";
-import { ConversationList } from "./ConversationList";
-import { ChatPanel } from "./ChatPanel";
+import { AgentPanel } from "../chat/AgentPanel";
+import { ConversationList } from "../chat/ConversationList";
+import { ChatPanel } from "../chat/ChatPanel";
 
 // Heading item in outline
 interface HeadingItem {

@@ -8,7 +8,7 @@ import { useUIStore } from "@/stores/useUIStore";
 import { useAIStore } from "@/stores/useAIStore";
 import { OFFICIAL_THEMES } from "@/lib/themes";
 import { X, Check } from "lucide-react";
-import { LiquidGlassEffect } from "./LiquidGlassEffect";
+import { LiquidGlassEffect } from "../effects/LiquidGlassEffect";
 
 interface SettingsModalProps {
   isOpen: boolean;

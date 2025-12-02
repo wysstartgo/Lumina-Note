@@ -36,7 +36,7 @@ import {
   Tag,
 } from "lucide-react";
 import type { ReferencedFile } from "@/hooks/useChatSend";
-import { AISettingsModal } from "@/components/ai/AISettingsModal";
+import { AISettingsModal } from "../ai/AISettingsModal";
 
 // 随机黄豆 emoji 列表
 const WELCOME_EMOJIS = [

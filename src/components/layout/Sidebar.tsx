@@ -5,7 +5,7 @@ import { FileEntry, deleteFile, renameFile, createFile, createDir, exists, openN
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { cn, getFileName } from "@/lib/utils";
-import { ContextMenu, MenuItem, menuItems } from "./ContextMenu";
+import { ContextMenu, MenuItem, menuItems } from "../toolbar/ContextMenu";
 import {
   ChevronRight,
   ChevronDown,

@@ -1,29 +1,29 @@
 import { useEffect, useCallback, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Sidebar } from "@/components/Sidebar";
-import { RightPanel } from "@/components/RightPanel";
-import { ResizeHandle } from "@/components/ResizeHandle";
-import { Ribbon } from "@/components/Ribbon";
-import { KnowledgeGraph } from "@/components/KnowledgeGraph";
+import { Sidebar } from "@/components/layout/Sidebar";
+import { RightPanel } from "@/components/layout/RightPanel";
+import { ResizeHandle } from "@/components/toolbar/ResizeHandle";
+import { Ribbon } from "@/components/layout/Ribbon";
+import { KnowledgeGraph } from "@/components/effects/KnowledgeGraph";
 import { Editor } from "@/editor/Editor";
-import { SplitEditor } from "@/components/SplitEditor";
+import { SplitEditor } from "@/components/layout/SplitEditor";
 import { useFileStore } from "@/stores/useFileStore";
 import { useUIStore } from "@/stores/useUIStore";
 import { useNoteIndexStore } from "@/stores/useNoteIndexStore";
 import { useRAGStore } from "@/stores/useRAGStore";
 import { FolderOpen, Sparkles, PanelLeftClose, PanelRightClose, PanelLeft, PanelRight } from "lucide-react";
-import { CommandPalette, PaletteMode } from "@/components/CommandPalette";
-import { GlobalSearch } from "@/components/GlobalSearch";
-import { TabBar } from "@/components/TabBar";
-import { DiffView } from "@/components/DiffView";
-import { AIFloatingBall } from "@/components/AIFloatingBall";
-import { VideoNoteView } from "@/components/VideoNoteView";
+import { CommandPalette, PaletteMode } from "@/components/search/CommandPalette";
+import { GlobalSearch } from "@/components/search/GlobalSearch";
+import { TabBar } from "@/components/layout/TabBar";
+import { DiffView } from "@/components/effects/DiffView";
+import { AIFloatingBall } from "@/components/ai/AIFloatingBall";
+import { VideoNoteView } from "@/components/video/VideoNoteView";
 import { DatabaseView, CreateDatabaseDialog, DatabaseSplitView } from "@/components/database";
 import { PDFViewer } from "@/components/pdf";
 import { useAIStore } from "@/stores/useAIStore";
 import { saveFile } from "@/lib/tauri";
-import { TitleBar } from "@/components/TitleBar";
-import { VoiceInputBall } from "@/components/VoiceInputBall";
+import { TitleBar } from "@/components/layout/TitleBar";
+import { VoiceInputBall } from "@/components/ai/VoiceInputBall";
 
 // Component that shows tabs + graph/editor content
 function EditorWithGraph() {

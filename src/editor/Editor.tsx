@@ -3,11 +3,11 @@ import { useFileStore } from "@/stores/useFileStore";
 import { useUIStore, EditorMode } from "@/stores/useUIStore";
 import { useAIStore } from "@/stores/useAIStore";
 import { useAgentStore } from "@/stores/useAgentStore";
-import { MainAIChatShell } from "@/components/MainAIChatShell";
+import { MainAIChatShell } from "@/components/layout/MainAIChatShell";
 import { debounce, getFileName } from "@/lib/utils";
 import { ReadingView } from "./ReadingView";
 import { CodeMirrorEditor, CodeMirrorEditorRef } from "./CodeMirrorEditor";
-import { SelectionToolbar } from "@/components/SelectionToolbar";
+import { SelectionToolbar } from "@/components/toolbar/SelectionToolbar";
 import { 
   Sidebar, 
   MessageSquare, 
@@ -18,7 +18,7 @@ import {
   ChevronRight,
   Columns,
 } from "lucide-react";
-import { TabBar } from "@/components/TabBar";
+import { TabBar } from "@/components/layout/TabBar";
 import { cn } from "@/lib/utils";
 
 const modeConfig: Record<EditorMode, { icon: React.ReactNode; label: string }> = {
