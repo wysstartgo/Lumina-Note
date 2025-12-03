@@ -333,9 +333,68 @@
 
 ---
 
-## 阶段 6：高级特性（Replanning、并行、回退机制）
+## 阶段 6：高级特性（反思、Replanning、并行、回退机制）
 
-### 6.1 增量 Replanning（动态计划调整）
+### 6.1 Agent 级反思（每个下游 Agent 的自检能力）
+
+- 目标：让每个下游 Agent 在执行后都具备“自我检查”的能力，但由 Execution Engine 统一编排，避免逻辑分散。
+- 设计：
+
+  - 在 `AgentTool` 抽象中引入可选的 `reflect` 方法：
+    ```ts
+    export interface AgentTool<I = unknown, O = unknown> {
+      name: string; // "db" | "rag" | ...
+      run(input: I, ctx: AgentContext): Promise<O>;
+      reflect?(
+        params: { input: I; output?: O; error?: AgentError; goal?: string },
+        ctx: AgentContext
+      ): Promise<AgentReflectionResult>;
+    }
+    ```
+  - 定义统一的反思结果结构：
+    ```ts
+    export type AgentReflectionResult = {
+      ok: boolean;
+      reasons: string[];
+      suggestion?: {
+        retryWithModifiedInput?: unknown;
+        planPatch?: PlanPatch; // 可选，与阶段 6.2 的 Replanning 配合使用
+        markAsTerminalFailure?: boolean;
+      };
+    };
+    ```
+  - 在 `PlanStep` 中增加可选的反思策略配置：
+
+    ```ts
+    export type ReflectionStrategy =
+      | 'none'
+      | 'on_error'
+      | 'always'
+      | {
+          mode: 'on_error' | 'always';
+          maxLocalRetries?: number;
+        };
+
+    export type PlanStep = {
+      // ...既有字段
+      reflection?: ReflectionStrategy;
+    };
+    ```
+
+  - 在 `PlanExecutor` 的单步执行流程中统一处理：
+    1. 调用 `agent.run(input, ctx)` 得到 `output` 或 `error`。
+    2. 根据 `step.reflection` 策略决定是否调用 `agent.reflect(...)`。
+    3. 根据 `AgentReflectionResult`：
+       - 若 `ok === true`：正常完成该 step。
+       - 若存在 `retryWithModifiedInput`：在不触发 Planner 的情况下本地轻量重试若干次。
+       - 若存在 `planPatch`：将补丁交由 Replanning 逻辑处理（见 6.2）。
+       - 若 `markAsTerminalFailure`：将 step 标记为失败，并按 `stopOnFailure` 决定是否终止任务。
+
+- 实施顺序建议：
+  - 先为 RAG / NoteEdit 等关键 Agent 实现简单版 `reflect`（只返回 `ok/reasons`）。
+  - 再逐步为 DBAgent / PDFAgent 等高风险或复杂逻辑的 Agent 增加更智能的 `reflect`。
+
+### 6.2 增量 Replanning（动态计划调整）
 
 - 场景：执行中发现某些假设不成立，或用户中途修改需求。
 - 设计：
@@ -347,14 +406,14 @@
     2. 构造一个“任务中间状态”提示，调用 Planner 生成“补充 Plan”或“修正版 Plan”。
     3. 在 `TaskState` 中合并新 Plan（追加 steps 或替换后续 steps）。
 
-### 6.2 并行执行
+### 6.3 并行执行
 
 - 针对无 `dependsOn` 或仅依赖已完成 steps 的步骤，允许并行执行：
   - PlanExecutor 增加简单的并行调度：
     - 控制最大并发数（防止打爆 LLM/API）。
   - TaskStateManager 支持并发写入（注意状态竞争）。
 
-### 6.3 回退机制 & 单 Agent 兜底
+### 6.4 回退机制 & 单 Agent 兜底
 
 - 为避免 Planner 模式降低可用性：
   - 提供 feature flag：`usePlannerMode: boolean`。
@@ -362,7 +421,7 @@
     - 回退到现有“单 Agent + 工具调用”模式（可选仅在开发/调试时启用）。
   - 在 UI 上为开发者提供一个“显示 Plan 细节 / 关闭 Planner 模式”的开关。
 
-### 6.4 观测与评估
+### 6.5 观测与评估
 
 - 收集 Planner 模式下的：
   - 成功/失败任务比例。
@@ -370,9 +429,10 @@
 - 做 A/B 测试（如果合适）：
   - 同一类任务在 planner 模式和旧模式下效果对比。
 
-### 6.5 产出物
+### 6.6 产出物
 
 - 支持 replanning 的 Planner + Executor。
+- 每个下游 Agent 的基础反思能力（`reflect` 实现）。
 - 简单的并行执行能力。
 - 回退机制 + feature flag。
 - 监控与评估指标（至少在日志层面）。
