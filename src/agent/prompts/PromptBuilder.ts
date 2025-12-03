@@ -120,10 +120,16 @@ TOOL USE
 - create_file → 使用 create_note
 - delete_file → 使用 delete_note
 
-✅ **唯一合法的工具名**（只能使用这些）：
-read_note, edit_note, create_note, delete_note, list_notes, move_note, search_notes, grep_search, semantic_search, query_database, add_database_row, get_backlinks, ask_user, attempt_completion
+✅ **唯一合法的业务工具名**（只能使用这些对笔记/数据库产生实际操作）：
+read_note, edit_note, create_note, delete_note, list_notes, move_note, search_notes, grep_search, semantic_search, query_database, add_database_row, get_backlinks
 
-使用任何不在上述列表中的工具名都会导致失败！
+此外还有两类**协议动作**，只用于对话包装，不视为业务工具调用：
+- ask_user：在信息不足时向用户询问或确认，格式化你的提问
+- attempt_completion：在任务结束时包裹最终结果，向用户报告任务完成情况
+
+注意：
+- 使用任何不在上述业务工具列表中的名字来尝试操作笔记/数据库，都会导致失败。
+- 不要把 ask_user 或 attempt_completion 当作“已经使用工具修改了内容”的依据，它们**不会对笔记或数据库做任何实际变更**。
 
 # 工具使用优先级与决策
 
@@ -137,7 +143,7 @@ read_note, edit_note, create_note, delete_note, list_notes, move_note, search_no
 4. **不确定是否需要工具时 → 先用 read_note / list_notes / search_notes 探查**
   - 宁可多一步只读类工具调用，也不要完全不使用工具。
 
-记住：你的目标是借助工具**真正完成任务并落地到笔记系统中**，而不是只在对话中给出抽象建议。`;
+记住：你的目标是借助业务工具**真正完成任务并落地到笔记系统中**，而不是只在对话中给出抽象建议。协议动作 ask_user / attempt_completion 只是帮助你与用户沟通和结束任务的格式要求，不代表实际的工具操作。`;
   }
 
   private getToolsCatalog(): string {
