@@ -4,7 +4,7 @@
 
 import { ToolExecutor, ToolResult, ToolContext } from "../../types";
 import { exists, rename, createDir } from "@/lib/tauri";
-import { join, dirname, resolve } from "@/lib/path";
+import { dirname, resolve } from "@/lib/path";
 import { useFileStore } from "@/stores/useFileStore";
 
 export const MoveFileTool: ToolExecutor = {

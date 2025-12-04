@@ -5,7 +5,7 @@
 
 import { ToolExecutor, ToolResult, ToolContext } from "../../types";
 import { writeFile, exists, createDir } from "@/lib/tauri";
-import { join, dirname, resolve } from "@/lib/path";
+import { dirname, resolve } from "@/lib/path";
 import { useFileStore } from "@/stores/useFileStore";
 
 export const CreateNoteTool: ToolExecutor = {

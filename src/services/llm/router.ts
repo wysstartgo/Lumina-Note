@@ -1,4 +1,4 @@
-import { Message, Intent, IntentType, LLMConfig } from "./types";
+import { Message, Intent, LLMConfig } from "./types";
 import { createProvider } from "./factory";
 import { getLLMConfig } from "./config";
 

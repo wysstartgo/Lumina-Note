@@ -40,7 +40,7 @@ export {
 
 // ============ 统一调用接口 ============
 
-import type { Message, LLMOptions, LLMResponse, LLMProvider, LLMStream, LLMConfig } from "./types";
+import type { Message, LLMOptions, LLMResponse, LLMStream, LLMConfig } from "./types";
 import { getLLMConfig } from "./config";
 import { createProvider } from "./factory";
 

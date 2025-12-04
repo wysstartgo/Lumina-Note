@@ -4,7 +4,7 @@
 
 import { ToolExecutor, ToolResult, ToolContext } from "../../types";
 import { readFile } from "@/lib/tauri";
-import { join, resolve } from "@/lib/path";
+import { resolve } from "@/lib/path";
 
 export const ReadNoteTool: ToolExecutor = {
   name: "read_note",

@@ -4,7 +4,7 @@
 
 import { ToolExecutor, ToolResult, ToolContext } from "../../types";
 import { readDir } from "@/lib/tauri";
-import { join, resolve } from "@/lib/path";
+import { resolve } from "@/lib/path";
 
 interface FileEntry {
   name: string;

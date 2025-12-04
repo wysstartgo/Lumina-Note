@@ -6,7 +6,7 @@
 import { ToolExecutor, ToolResult, ToolContext } from "../../types";
 import { deleteFile, exists } from "@/lib/tauri";
 import { useFileStore } from "@/stores/useFileStore";
-import { join, resolve } from "@/lib/path";
+import { resolve } from "@/lib/path";
 
 export const DeleteNoteTool: ToolExecutor = {
   name: "delete_note",
