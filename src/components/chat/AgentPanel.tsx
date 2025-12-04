@@ -7,8 +7,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useAgentStore } from "@/stores/useAgentStore";
 import { useFileStore } from "@/stores/useFileStore";
-import { MODES, getModeList } from "@/agent/modes";
-import { AgentModeSlug } from "@/agent/types";
 import { ChatInput } from "./ChatInput";
 import { AgentMessageRenderer } from "./AgentMessageRenderer";
 import { useSpeechToText } from "@/hooks/useSpeechToText";
@@ -18,7 +16,6 @@ import {
   Check,
   X,
   Trash2,
-  ChevronDown,
   Loader2,
   AlertCircle,
   Bot,
@@ -39,8 +36,6 @@ export function AgentPanel() {
     status,
     messages,
     pendingTool,
-    mode,
-    setMode,
     startTask,
     abort,
     approve,
@@ -84,8 +79,7 @@ export function AgentPanel() {
           <span className="font-medium text-foreground">Lumina Agent</span>
         </div>
         <div className="flex items-center gap-2">
-          {/* 模式选择 */}
-          <ModeSelector mode={mode} onChange={setMode} />
+          {/* 模式选择已由意图自动决定，隐藏手动切换 */}
           {/* 清空按钮 */}
           <button
             onClick={clearChat}
@@ -102,7 +96,7 @@ export function AgentPanel() {
         {/* 欢迎消息 */}
         {messages.length === 0 && (
           <div className="text-sm text-muted-foreground leading-relaxed">
-            <p>{MODES[mode].roleDefinition}</p>
+            <p>我是 Lumina Agent，告诉我你想完成的任务。</p>
             <p className="mt-2 text-xs opacity-70">输入任务指令开始</p>
           </div>
         )}
@@ -170,11 +164,7 @@ export function AgentPanel() {
 
       {/* 输入区域 - 样式对齐 Chat 输入框（自定义 textarea + 统一底部按钮） */}
       <div className="p-3 border-t border-border">
-        <div className="mb-2 flex justify-between items-center">
-          <span className="text-xs text-muted-foreground">
-            {MODES[mode].name}
-          </span>
-        </div>
+        {/* 模式在后台由意图自动选择，不在 UI 显示 */}
 
         <div className="bg-muted/30 border border-border rounded-lg p-2 focus-within:ring-1 focus-within:ring-primary/50 transition-all">
           <ChatInput
@@ -235,43 +225,6 @@ export function AgentPanel() {
 }
 
 // ============ 子组件 ============
-
-function ModeSelector({ mode, onChange }: { mode: AgentModeSlug; onChange: (m: AgentModeSlug) => void }) {
-  const [open, setOpen] = useState(false);
-  const modes = getModeList();
-  const current = MODES[mode];
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 px-2 py-1 text-sm bg-muted rounded
-                   hover:bg-muted/80 text-foreground"
-      >
-        <span>{current.name}</span>
-        <ChevronDown className="w-3 h-3" />
-      </button>
-      {open && (
-        <div className="absolute right-0 mt-1 w-40 bg-background border border-border 
-                        rounded-lg shadow-lg z-10">
-          {modes.map((m) => (
-            <button
-              key={m.slug}
-              onClick={() => {
-                onChange(m.slug);
-                setOpen(false);
-              }}
-              className={`w-full px-3 py-2 text-left text-sm hover:bg-muted
-                         ${m.slug === mode ? "bg-muted text-primary" : "text-foreground"}`}
-            >
-              {m.name}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function ToolApproval({
   toolName,

@@ -411,6 +411,8 @@ export const useAgentStore = create<AgentState>()(
 
               if (targetMode && MODES[targetMode]) {
                 fullContext.mode = MODES[targetMode];
+                // 同步将意图选出的模式保存到 store.mode，保证 UI 与 AgentLoop 一致
+                set({ mode: targetMode });
                 console.log(`[Agent] Auto-switching mode to: ${targetMode} (based on intent: ${intent.type})`);
               }
             }
