@@ -16,11 +16,12 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Globe, Bookmark, Share2, AlertCircle } from 'lucide-react';
+import { Globe, Bookmark, Share2, AlertCircle, PanelLeftOpen, PanelRightOpen } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { AddressBar } from './AddressBar';
 import { useFileStore } from '@/stores/useFileStore';
 import { useBrowserStore } from '@/stores/useBrowserStore';
+import { useUIStore } from '@/stores/useUIStore';
 import { cn } from '@/lib/utils';
 
 interface BrowserViewProps {
@@ -399,6 +400,14 @@ export function BrowserView({
       
       {/* 工具栏 - 快捷网址 */}
       <div className="flex items-center gap-1 px-2 py-0.5 border-b border-border bg-muted/30 overflow-x-auto scrollbar-none">
+        {/* 切换左侧侧边栏按钮 */}
+        <button
+          onClick={() => useUIStore.getState().toggleLeftSidebar()}
+          className="p-1 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground shrink-0"
+          title="切换左侧面板"
+        >
+          <PanelLeftOpen size={12} />
+        </button>
         <button
           className="p-1 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground shrink-0"
           title="添加书签"
@@ -444,6 +453,14 @@ export function BrowserView({
         <span className="text-xs text-muted-foreground shrink-0">
           {isLoading ? '加载中...' : ''}
         </span>
+        {/* 切换右侧侧边栏按钮 */}
+        <button
+          onClick={() => useUIStore.getState().toggleRightSidebar()}
+          className="p-1 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground shrink-0"
+          title="切换右侧面板"
+        >
+          <PanelRightOpen size={14} />
+        </button>
       </div>
       
       {/* WebView 容器 */}
