@@ -1,10 +1,14 @@
 /**
  * Agent 主循环
  * 
- * 负责：
+ * 职责：
  * 1. 管理 Agent 生命周期
  * 2. 协调 LLM 调用和工具执行
  * 3. 处理用户审批流程
+ * 
+ * 修复说明 (Fix for Frontend Display):
+ * - 修复了 attempt_completion 成功后多余的 User 消息导致前端无法显示 finalAnswer 的问题。
+ * - 优化了上下文窗口算法，防止截断关键的最新消息。
  */
 
 import {
@@ -26,14 +30,25 @@ import { callLLM } from "../providers";
 import { useRAGStore } from "@/stores/useRAGStore";
 import { getToolSchemas } from "../tools/schemas";
 
-const MAX_CONSECUTIVE_ERRORS = 3;
+// ============ 配置常量 ============
+const CONFIG = {
+  MAX_CONSECUTIVE_LOGIC_ERRORS: 3, // 逻辑错误（如参数错误）最大连续重试次数
+  MAX_NETWORK_RETRIES: 3,          // 网络/系统错误最大重试次数
+  TOOL_EXECUTION_TIMEOUT: 60000,   // 工具执行超时 (ms)
+  APPROVAL_TIMEOUT: 300000,        // 审批超时 (5分钟)
+  MAX_CONTEXT_MESSAGES: 40,        // 滑动窗口保留的消息数量（增大以保留更多历史）
+  RAG_MAX_CHARS: 4000,             // RAG 注入内容最大字符数
+};
 
 export class AgentLoop {
   private stateManager: StateManager;
   private promptBuilder: PromptBuilder;
   private toolRegistry: ToolRegistry;
   private abortController: AbortController | null = null;
+  
+  // 审批相关
   private approvalResolver: ((approved: boolean) => void) | null = null;
+  private approvalTimer: NodeJS.Timeout | null = null;
 
   constructor() {
     this.stateManager = new StateManager();
@@ -54,21 +69,20 @@ export class AgentLoop {
    * 启动 Agent 任务
    */
   async startTask(userMessage: string, context: TaskContext, configOverride?: Partial<LLMConfig>): Promise<void> {
-    // 保存现有消息（不重置）
     const existingMessages = this.stateManager.getMessages();
-    const hasHistory = existingMessages.length > 1; // 除了 system 消息外还有其他消息
+    const hasHistory = existingMessages.length > 1;
 
-    // 重置状态但保留消息历史
+    // 初始化状态
     this.stateManager.setStatus("running");
     this.stateManager.setTask(userMessage);
     this.stateManager.resetErrors();
     this.stateManager.setLLMConfig(configOverride);
     this.abortController = new AbortController();
 
-    // RAG 自动注入：搜索相关笔记
+    // RAG 自动注入：搜索相关笔记 (带长度限制)
     const enrichedContext = await this.enrichContextWithRAG(userMessage, context);
 
-    // 构建消息
+    // 构建 Prompt
     const systemPrompt = this.promptBuilder.build(enrichedContext);
     const userContent = this.buildUserContent(userMessage, enrichedContext);
 
@@ -80,6 +94,9 @@ export class AgentLoop {
           : msg
       );
       newMessages.push({ role: "user", content: userContent });
+      
+      // 应用滑动窗口
+      newMessages = this.manageContextWindow(newMessages);
       this.stateManager.setMessages(newMessages);
     } else {
       // 首次任务，初始化消息
@@ -93,12 +110,7 @@ export class AgentLoop {
     try {
       await this.runLoop(context);
     } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        this.stateManager.setStatus("aborted");
-      } else {
-        this.stateManager.setStatus("error");
-        this.stateManager.setError(error instanceof Error ? error.message : "未知错误");
-      }
+      this.handleFatalError(error);
     }
   }
 
@@ -108,27 +120,18 @@ export class AgentLoop {
   abort(): void {
     this.abortController?.abort();
     this.stateManager.setStatus("aborted");
-
-    // 如果正在等待审批，拒绝
-    if (this.approvalResolver) {
-      this.approvalResolver(false);
-      this.approvalResolver = null;
-    }
+    this.cleanupApproval(false); // 拒绝挂起的审批
   }
 
   /**
    * 审批工具调用
    */
   approveToolCall(approved: boolean): void {
-    if (this.approvalResolver) {
-      this.approvalResolver(approved);
-      this.approvalResolver = null;
-    }
+    this.cleanupApproval(approved);
   }
 
   /**
    * 继续执行循环（用于超时重试）
-   * 不创建新任务，直接从当前消息状态继续
    */
   async continueLoop(context: TaskContext, configOverride?: Partial<LLMConfig>): Promise<void> {
     this.abortController = new AbortController();
@@ -137,97 +140,63 @@ export class AgentLoop {
 
     try {
       await this.runLoop(context);
-
-      const status = this.stateManager.getStatus();
-      if (status === "running") {
+      if (this.stateManager.getStatus() === "running") {
         this.stateManager.setStatus("completed");
       }
     } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        this.stateManager.setStatus("aborted");
-      } else {
-        this.stateManager.setStatus("error");
-        this.stateManager.setError(error instanceof Error ? error.message : "未知错误");
-      }
+      this.handleFatalError(error);
     }
   }
 
-  /**
-   * 添加超时提示（用于 LLM 请求超时时追加提示消息）
-   */
   addTimeoutHint(hint: string): void {
-    this.stateManager.addMessage({
-      role: "user",
-      content: hint,
-    });
+    this.stateManager.addMessage({ role: "user", content: hint });
   }
 
-  /**
-   * 获取当前状态
-   */
   getState() {
     return this.stateManager.getState();
   }
 
-  /**
-   * 事件监听
-   */
   on(event: AgentEventType, handler: AgentEventHandler): () => void {
     return this.stateManager.on(event, handler);
   }
 
-  // ============ 私有方法 ============
+  // ============ 私有方法：主循环 ============
 
-  /**
-   * Agent 主循环
-   */
   private async runLoop(context: TaskContext): Promise<void> {
     while (
       this.stateManager.getStatus() === "running" &&
       !this.abortController?.signal.aborted
     ) {
       try {
-        const messages = this.stateManager.getMessages();
-
-        // 1. 获取当前模式可用的工具名称
-        const toolNames = context.mode?.tools || [];
-
-        // 2. 调用 LLM（传入工具用于 FC 模式）
-        const response = await this.callLLM(messages, toolNames);
-
-        // 3. 优先使用 FC 响应中的 toolCalls，否则回退到 XML 解析
-        let toolCalls: ToolCall[];
-        let isCompletion = false;
-        let isFCMode = false;
-
-        if (response.toolCalls && response.toolCalls.length > 0) {
-          // FC 模式：直接使用结构化的工具调用
-          isFCMode = true;
-          toolCalls = response.toolCalls.map(tc => ({
-            name: tc.name,
-            params: tc.arguments,
-            raw: JSON.stringify(tc),
-          }));
-          isCompletion = toolCalls.some(tc => tc.name === "attempt_completion");
-          console.log("[Agent] 使用 Function Calling 模式，工具调用:", toolCalls.map(tc => tc.name));
-        } else {
-          // XML 解析模式：从文本中解析工具调用
-          const parsedResponse = parseResponse(response.content);
-          toolCalls = parsedResponse.toolCalls;
-          isCompletion = parsedResponse.isCompletion;
+        // 1. 上下文维护 (再次检查，确保循环中产生的新消息不会导致溢出)
+        const currentMessages = this.manageContextWindow(this.stateManager.getMessages());
+        if (currentMessages.length !== this.stateManager.getMessages().length) {
+            this.stateManager.setMessages(currentMessages);
         }
 
-        // 4. 添加 assistant 消息
-        // FC 模式下，把工具调用转换为 XML 格式附加到 content，便于前端解析显示
-        let assistantContent = response.content;
+        const toolNames = context.mode?.tools || [];
+
+        // 2. 调用 LLM (带网络重试机制)
+        const response = await this.callLLMWithRetry(currentMessages, toolNames);
+
+        // 3. 解析响应 (统一 FC 和 XML)
+        const { toolCalls, isCompletion, content, isFCMode } = this.parseLLMResponse(response);
+
+        // 4. 构建 Assistant 消息
+        // 如果是 FC 模式，我们将工具调用序列化为 XML 附加在后面，保持历史记录格式一致性
+        let assistantContent = content;
         if (isFCMode && toolCalls.length > 0) {
           const toolCallsXml = toolCalls.map(tc => {
             const paramsXml = Object.entries(tc.params)
-              .map(([key, value]) => `<${key}>${typeof value === 'string' ? value : JSON.stringify(value)}</${key}>`)
+              .map(([key, value]) => `<${key}>${typeof value === 'object' ? JSON.stringify(value) : value}</${key}>`)
               .join('\n');
             return `<${tc.name}>\n${paramsXml}\n</${tc.name}>`;
           }).join('\n\n');
-          assistantContent = `${response.content}\n\n${toolCallsXml}`;
+          
+          // 避免重复追加
+          if (!content.includes(`<${toolCalls[0].name}>`)) {
+             assistantContent = content ? `${content}\n\n${toolCallsXml}` : toolCallsXml;
+          }
         }
 
         this.stateManager.addMessage({
@@ -235,192 +204,164 @@ export class AgentLoop {
           content: assistantContent,
         });
 
-        // 5. 处理工具调用
+        // 5. 处理工具或结果
         if (toolCalls.length > 0) {
           await this.handleToolCalls(toolCalls, context);
 
-          // 如果调用了 attempt_completion，任务完成，退出循环
-          if (isCompletion) {
-            this.stateManager.setStatus("completed");
+          // handleToolCalls 内部如果执行了 attempt_completion，会将状态设为 completed
+          // 此时应立即退出循环
+          if (this.stateManager.getStatus() === "completed") {
             break;
           }
         } else if (isCompletion) {
-          // 任务完成（无工具调用但有完成标记）
           this.stateManager.setStatus("completed");
           break;
         } else {
-          // 没有工具调用也没有完成标记
-
-          // 检查是否是纯文本回复（可能是闲聊）
-          // 移除 thinking 标签后，如果剩余内容不包含类似工具调用的标签，则视为普通回复
-          const cleanContent = response.content.replace(/<thinking>[\s\S]*?<\/thinking>/g, "").trim();
-
-          // 移除代码块，避免误判代码中的标签
-          const contentWithoutCode = cleanContent.replace(/```[\s\S]*?```/g, "");
-
-          // 检查是否有潜在的工具标签（简单的启发式：包含下划线的标签通常是工具，如 <read_note>）
-          // 如果 parseResponse 没解析出来，但这里匹配到了，说明可能是格式错误的工具调用
-          const hasPotentialToolTag = /<[a-z]+(_[a-z]+)+/i.test(contentWithoutCode);
-
-          // 只有在非严格模式下（如 chat/writer/researcher），或者看起来像是提问时，才允许纯文本结束
-          // 对于 editor/organizer，我们期望它至少调用 ask_user 或 attempt_completion
-          const currentMode = context.mode?.slug;
-          const intent = context.intent;
-
-          // 如果意图明确是 chat，则允许纯文本回复
-          if (intent === "chat") {
-            this.stateManager.setStatus("completed");
-            break;
-          }
-
-          // 否则，如果是操作模式，则强制要求使用工具
-          const isActionOrientedMode = currentMode === "editor" || currentMode === "organizer";
-          // 检查是否是明确的操作意图 (create/edit/organize)
-          const isExplicitActionIntent = intent === "create" || intent === "edit" || intent === "organize";
-
-          if (!hasPotentialToolTag && cleanContent.length > 0) {
-            if (isActionOrientedMode || isExplicitActionIntent) {
-              // 在操作模式或操作意图下，如果回复很短（可能是简单的确认或拒绝），或者包含问号（可能是提问），则允许通过
-              // 否则，强制要求使用工具，防止 Agent 幻觉（说做了但没做）
-              const isShortReply = cleanContent.length < 50;
-              const isQuestion = cleanContent.includes("?") || cleanContent.includes("？");
-
-              // 只有当意图不是明确的操作意图时，才允许简短回复通过
-              // 如果意图明确是 create/edit/organize，即使回复很短，也必须使用工具（除非是提问）
-
-              if ((isShortReply || isQuestion) && (!isExplicitActionIntent || isQuestion)) {
-                this.stateManager.setStatus("completed");
-                break;
-              }
-              // 否则，继续执行下面的错误处理，强制要求使用工具
-            } else {
-              // 非操作模式（Writer/Researcher），允许纯文本回复
-              this.stateManager.setStatus("completed");
-              break;
-            }
-          }
-
-          this.stateManager.incrementErrors();
-
-          if (this.stateManager.getConsecutiveErrors() >= MAX_CONSECUTIVE_ERRORS) {
-            this.stateManager.setStatus("error");
-            this.stateManager.setError("Agent 未能正确使用工具");
-            break;
-          }
-
-          // 提示 LLM 使用工具
-          this.stateManager.addMessage({
-            role: "user",
-            content: getNoToolUsedPrompt(),
-          });
+          // 处理无工具调用的情况 (纯文本回复检查)
+          const shouldStop = this.handleNoToolResponse(content, context);
+          if (shouldStop) break;
         }
       } catch (error) {
-        this.handleError(error);
-
-        if (this.stateManager.getStatus() === "error") {
-          break;
-        }
+        // 捕获循环内的非致命错误
+        const fatal = this.handleLoopError(error);
+        if (fatal) break;
       }
     }
   }
 
-  /**
-   * 调用 LLM
-   * 支持 Function Calling 模式（DeepSeek/OpenAI 等）
-   */
-  private async callLLM(messages: Message[], toolNames?: string[]): Promise<LLMResponse> {
+  // ============ 私有方法：LLM 调用与重试 ============
+
+  private async callLLMWithRetry(messages: Message[], toolNames?: string[]): Promise<LLMResponse> {
     const configOverride = this.stateManager.getLLMConfig();
-
-    // 记录 LLM 请求开始时间并增加计数
-    this.stateManager.setLLMRequestStartTime(Date.now());
-    this.stateManager.incrementLLMRequestCount();
-
-    const requestCount = this.stateManager.getLLMRequestCount();
-    console.log(`[Agent] LLM 请求 #${requestCount} 开始`);
-
-    // 获取工具 schemas 用于 FC 模式
     const tools = toolNames ? getToolSchemas(toolNames) : undefined;
+    let retries = 0;
 
-    try {
-      const response = await callLLM(messages, {
-        signal: this.abortController?.signal,
-        tools,
-      }, configOverride);
+    while (true) {
+      try {
+        this.stateManager.setLLMRequestStartTime(Date.now());
+        this.stateManager.incrementLLMRequestCount();
+        const reqId = this.stateManager.getLLMRequestCount();
+        
+        console.time(`LLM-Req-${reqId}`);
+        const response = await callLLM(messages, {
+          signal: this.abortController?.signal,
+          tools,
+        }, configOverride);
+        console.timeEnd(`LLM-Req-${reqId}`);
 
-      console.log(`[Agent] LLM 请求 #${requestCount} 完成`);
+        this.stateManager.setLLMRequestStartTime(null);
+        return response;
 
-      // 请求完成后清除开始时间（但保留计数）
-      this.stateManager.setLLMRequestStartTime(null);
+      } catch (error: any) {
+        this.stateManager.setLLMRequestStartTime(null);
+        
+        if (this.abortController?.signal.aborted || error.name === "AbortError") {
+          throw error;
+        }
 
-      return response;
-    } catch (error) {
-      console.error(`[Agent] LLM 请求 #${requestCount} 失败:`, error);
-      this.stateManager.setLLMRequestStartTime(null);
-      throw error;
+        // 识别可重试的系统错误
+        const isNetworkError = error.message && (
+            error.message.includes("timeout") || 
+            error.message.includes("network") || 
+            error.message.includes("fetch failed") || 
+            error.status === 429 || 
+            error.status >= 500
+        );
+
+        if (isNetworkError && retries < CONFIG.MAX_NETWORK_RETRIES) {
+            retries++;
+            const delay = Math.pow(2, retries) * 1000;
+            console.warn(`[Agent] LLM 网络错误，${delay}ms 后重试 (${retries}/${CONFIG.MAX_NETWORK_RETRIES}): ${error.message}`);
+            await new Promise(r => setTimeout(r, delay));
+            continue;
+        }
+
+        throw error;
+      }
     }
   }
 
-  /**
-   * 处理工具调用
-   */
+  // ============ 私有方法：工具处理 (FIXED) ============
+
   private async handleToolCalls(toolCalls: ToolCall[], context: TaskContext): Promise<void> {
     for (const toolCall of toolCalls) {
-      // 检查是否被中止
-      if (this.abortController?.signal.aborted) {
-        break;
-      }
+      if (this.abortController?.signal.aborted) break;
 
-      // 检查是否需要用户审批
+      // 1. 审批流程 (带超时)
       if (this.requiresApproval(toolCall)) {
-        // 先创建等待 Promise（设置 resolver），再更新状态
-        // 这样自动审批的回调才能正确调用 resolver
-        const approvalPromise = this.waitForApproval();
-
         this.stateManager.setStatus("waiting_approval");
         this.stateManager.setPendingTool(toolCall);
-
-        // 等待用户审批
-        const approved = await approvalPromise;
-
-        if (!approved) {
-          this.stateManager.addMessage({
-            role: "user",
-            content: `用户拒绝了工具调用: ${toolCall.name}。\n\n请使用 <thinking> 标签分析用户拒绝的原因（可能是操作危险、参数不正确或不符合用户意图），然后尝试其他方式或询问用户需求。`,
-          });
-          this.stateManager.setStatus("running");
-          continue;
+        
+        try {
+            const approved = await this.waitForApprovalWithTimeout();
+            if (!approved) {
+                this.stateManager.addMessage({
+                    role: "user",
+                    content: `用户（或系统超时）拒绝了工具调用: ${toolCall.name}。\n请使用 <thinking> 分析原因并尝试替代方案。`,
+                });
+                this.stateManager.setStatus("running");
+                continue; // 跳过此工具
+            }
+        } catch (e) {
+            console.error("审批流程异常", e);
+            continue;
+        } finally {
+            this.cleanupApproval(false);
         }
       }
 
-      // 执行工具
-      const result = await this.executeTool(toolCall, context);
+      // 2. 执行工具 (带超时)
+      const startTime = Date.now();
+      const result = await this.executeToolWithTimeout(toolCall, context);
+      const duration = Date.now() - startTime;
+      
+      console.log(`[Agent] 工具 ${toolCall.name} 执行耗时: ${duration}ms`);
 
-      // 特殊处理 attempt_completion：将 result 内容作为 assistant 最终回复
-      // 这样无论是 XML 模式还是 FC 模式，最终回答都能正确显示
-      if (toolCall.name === "attempt_completion" && result.success) {
-        const completionResult = toolCall.params.result as string;
-        if (completionResult) {
-          this.stateManager.addMessage({
-            role: "assistant",
-            content: `<attempt_completion_result>\n${completionResult}\n</attempt_completion_result>`,
-          });
+      // 3. 特殊处理：Completion 结果 (关键修复)
+      // 一旦 attempt_completion 成功，立即添加结果并返回，防止添加多余的 User 消息
+      if (toolCall.name === "attempt_completion") {
+        if (result.success) {
+            const completionResult = typeof toolCall.params.result === 'string' 
+                ? toolCall.params.result 
+                : JSON.stringify(toolCall.params.result);
+                
+            // 务必使用 Assistant 角色，因为前端提取 finalAnswer 是从 Assistant 消息中提取的
+            if (completionResult) {
+                this.stateManager.addMessage({
+                    role: "assistant",
+                    content: `<attempt_completion_result>\n${completionResult}\n</attempt_completion_result>`,
+                });
+            }
+            
+            // 标记完成
+            this.stateManager.setStatus("completed");
+            
+            // ⚠️ FIX: 直接返回，不执行下方添加 User 消息的代码
+            // 这样前端看到的消息序列就是: [...Assistant(calls tool), Assistant(result)]
+            // 而不是被 User 消息截断
+            return; 
         }
+        // 如果失败，则继续向下，执行标准的错误报告流程
       }
 
-      // 将结果添加到消息
+      // 4. 格式化常规工具结果与错误引导
       let resultMsg = formatToolResult(toolCall, result);
-
-      // 如果执行失败，追加反思提示
+      
       if (!result.success) {
-        resultMsg += `\n\n❌ 系统拒绝执行：检测到工具调用错误。\n\n请立即反思：\n1. 工具名称是否正确？\n2. 参数格式是否符合 JSON 规范？\n3. 参数值是否有效？(特别是文件路径是否包含特殊字符或格式错误)\n\n请在下一次回复中：\n1. 必须使用 <thinking> 标签详细分析错误原因\n2. 修正错误并重新调用工具`;
+        const isTimeout = result.error?.includes("超时");
+        resultMsg += `\n\n❌ 执行失败 (耗时 ${duration}ms)。\n错误信息: ${result.error}`;
+        resultMsg += isTimeout
+            ? `\n建议：操作可能过于耗时，请尝试减少处理的数据量或分步执行。`
+            : `\n建议：请仔细检查参数格式和路径是否存在。必须使用 <thinking> 分析错误原因。`;
       }
 
-      this.stateManager.addMessage({
-        role: "user",
-        content: resultMsg,
-      });
+      // 添加 User 消息（仅当不是成功的 attempt_completion 时执行到这里）
+      this.stateManager.addMessage({ role: "user", content: resultMsg });
 
-      this.stateManager.resetErrors();
+      // 只要尝试了工具调用，就重置逻辑错误计数
+      if (result.success) {
+        this.stateManager.resetErrors();
+      }
     }
 
     this.stateManager.setStatus("running");
@@ -428,148 +369,320 @@ export class AgentLoop {
   }
 
   /**
-   * 判断工具是否需要用户审批
+   * 带超时熔断的工具执行
    */
+  private async executeToolWithTimeout(toolCall: ToolCall, context: TaskContext): Promise<ToolResult> {
+    let timeoutId: NodeJS.Timeout;
+    
+    const timeoutPromise = new Promise<ToolResult>((resolve) => {
+      timeoutId = setTimeout(() => {
+        resolve({
+          success: false,
+          content: "",
+          error: `工具执行超时 (${CONFIG.TOOL_EXECUTION_TIMEOUT / 1000}秒)`,
+        });
+      }, CONFIG.TOOL_EXECUTION_TIMEOUT);
+    });
+
+    const executionPromise = (async () => {
+      try {
+        const res = await this.toolRegistry.execute(toolCall.name, toolCall.params, {
+          workspacePath: context.workspacePath,
+          activeNotePath: context.activeNote,
+        });
+        clearTimeout(timeoutId!);
+        return res;
+      } catch (error) {
+        clearTimeout(timeoutId!);
+        return {
+          success: false,
+          content: "",
+          error: error instanceof Error ? error.message : "工具执行失败",
+        };
+      }
+    })();
+
+    return Promise.race([executionPromise, timeoutPromise]);
+  }
+
+  // ============ 私有方法：审批管理 ============
+
   private requiresApproval(toolCall: ToolCall): boolean {
     return this.toolRegistry.requiresApproval(toolCall.name);
   }
 
-  /**
-   * 等待用户审批
-   */
-  private waitForApproval(): Promise<boolean> {
+  private waitForApprovalWithTimeout(): Promise<boolean> {
     return new Promise((resolve) => {
       this.approvalResolver = resolve;
+      
+      this.approvalTimer = setTimeout(() => {
+        if (this.approvalResolver) {
+          console.warn("[Agent] 审批等待超时，自动拒绝");
+          this.approvalResolver(false);
+          this.approvalResolver = null;
+          this.approvalTimer = null;
+        }
+      }, CONFIG.APPROVAL_TIMEOUT);
     });
   }
 
-  /**
-   * 执行工具
-   */
-  private async executeTool(toolCall: ToolCall, context: TaskContext): Promise<ToolResult> {
-    try {
-      return await this.toolRegistry.execute(toolCall.name, toolCall.params, {
-        workspacePath: context.workspacePath,
-        activeNotePath: context.activeNote,
-      });
-    } catch (error) {
-      return {
-        success: false,
-        content: "",
-        error: error instanceof Error ? error.message : "工具执行失败",
-      };
+  private cleanupApproval(approved: boolean) {
+    if (this.approvalTimer) {
+      clearTimeout(this.approvalTimer);
+      this.approvalTimer = null;
+    }
+    if (this.approvalResolver) {
+      this.approvalResolver(approved);
+      this.approvalResolver = null;
     }
   }
 
+  // ============ 私有方法：上下文管理 ============
+
   /**
-   * RAG 自动注入：搜索相关笔记并增强上下文
+   * 智能滑动窗口
+   * 策略：System(含历史摘要) + Task + 最近 N 条
+   * 
+   * 改进：截断时生成已执行工具的摘要，附加到 System Prompt 中
+   * 这样不会破坏前端的轮次分组逻辑
    */
-  private async enrichContextWithRAG(userMessage: string, context: TaskContext): Promise<TaskContext> {
-    // 如果消息太短（少于 5 个字符），不进行搜索
-    if (userMessage.length < 5) {
-      return context;
+  private manageContextWindow(messages: Message[]): Message[] {
+    if (messages.length <= CONFIG.MAX_CONTEXT_MESSAGES) {
+      return messages;
     }
+
+    const systemMsg = messages[0];
+    // 假设第二条是用户最初的任务指令
+    const taskMsg = messages[1]?.role === 'user' ? messages[1] : null;
+    
+    // 计算要保留的最近消息数量（预留 2 个位置：system + task）
+    const keepCount = CONFIG.MAX_CONTEXT_MESSAGES - 2;
+    const recentMessages = messages.slice(-keepCount);
+    
+    // 生成被截断消息的摘要
+    const truncatedMessages = messages.slice(2, messages.length - keepCount);
+    const toolSummary = this.summarizeTruncatedMessages(truncatedMessages);
+
+    // 把历史摘要附加到 System Prompt 中（不插入新的 user 消息）
+    const systemMsgWithSummary: Message = toolSummary
+      ? {
+          role: "system",
+          content: `${systemMsg.content}\n\n====\n\n[历史操作记录 - 请勿重复执行以下已完成的操作]\n${toolSummary}`
+        }
+      : systemMsg;
+
+    const newHistory: Message[] = [systemMsgWithSummary];
+    
+    if (taskMsg && !recentMessages.includes(taskMsg)) {
+      newHistory.push(taskMsg);
+    }
+
+    console.log(`[Agent] 上下文修剪: ${messages.length} -> ${newHistory.length + recentMessages.length}，截断了 ${truncatedMessages.length} 条消息`);
+    return [...newHistory, ...recentMessages];
+  }
+
+  /**
+   * 生成被截断消息的摘要
+   * 提取已执行的工具调用和关键文件路径
+   */
+  private summarizeTruncatedMessages(messages: Message[]): string {
+    const toolCalls: Map<string, Set<string>> = new Map(); // toolName -> Set<paths>
+    
+    for (const msg of messages) {
+      // 从 tool_result 中提取工具名和参数
+      const resultMatches = msg.content.matchAll(/<tool_result name="([^"]+)"[^>]*>([\s\S]*?)<\/tool_result>/g);
+      for (const match of resultMatches) {
+        const toolName = match[1];
+        if (!toolCalls.has(toolName)) {
+          toolCalls.set(toolName, new Set());
+        }
+        
+        // 尝试提取文件路径
+        const pathMatch = match[0].match(/(?:文件|路径|目录)[：:]\s*([^\s\n<]+)/);
+        if (pathMatch) {
+          toolCalls.get(toolName)!.add(pathMatch[1]);
+        }
+      }
+      
+      // 从 assistant 消息中提取工具调用
+      const toolMatches = msg.content.matchAll(/<(read_note|list_notes|edit_note|create_note|search_notes|grep_search)>/g);
+      for (const match of toolMatches) {
+        const toolName = match[1];
+        if (!toolCalls.has(toolName)) {
+          toolCalls.set(toolName, new Set());
+        }
+      }
+    }
+    
+    if (toolCalls.size === 0) {
+      return "";
+    }
+    
+    // 生成摘要
+    const lines: string[] = [];
+    for (const [toolName, paths] of toolCalls) {
+      if (paths.size > 0) {
+        const pathList = [...paths].slice(0, 5).join(", ");
+        const more = paths.size > 5 ? ` 等 ${paths.size} 个` : "";
+        lines.push(`- ${toolName}: ${pathList}${more}`);
+      } else {
+        lines.push(`- ${toolName}: 已调用`);
+      }
+    }
+    
+    return lines.join("\n");
+  }
+
+  private async enrichContextWithRAG(userMessage: string, context: TaskContext): Promise<TaskContext> {
+    if (userMessage.length < 5) return context;
 
     try {
       const ragStore = useRAGStore.getState();
-      const ragManager = ragStore.ragManager;
-      const ragConfig = ragStore.config;
+      if (!ragStore.config.enabled || !ragStore.ragManager?.isInitialized()) return context;
 
-      // 检查 RAG 是否启用和初始化
-      if (!ragConfig.enabled || !ragManager?.isInitialized()) {
-        return context;
+      const results = await ragStore.ragManager.search(userMessage, { limit: 10 });
+      if (results.length === 0) return context;
+
+      // 智能截断：基于字符总数限制
+      let currentChars = 0;
+      const validResults: RAGSearchResult[] = [];
+
+      for (const r of results) {
+        if (!r.filePath || !r.content) continue;
+        
+        if (currentChars + r.content.length > CONFIG.RAG_MAX_CHARS) {
+            // 如果还没满，尝试放入截断版
+            const remaining = CONFIG.RAG_MAX_CHARS - currentChars;
+            if (remaining > 200) {
+                 validResults.push({ ...r, content: r.content.slice(0, remaining) + "..." });
+            }
+            break;
+        }
+
+        validResults.push({ ...r, score: r.score || 0 });
+        currentChars += r.content.length;
       }
 
-      // 执行语义搜索
-      const results = await ragManager.search(userMessage, { limit: 10 });
-
-      if (results.length === 0) {
-        return context;
-      }
-
-      // 转换为 RAGSearchResult 格式，确保字段有效
-      const ragResults: RAGSearchResult[] = results
-        .filter(r => r.filePath && r.content) // 过滤无效结果
-        .map(r => ({
-          filePath: r.filePath || "未知文件",
-          content: r.content || "",
-          score: typeof r.score === "number" && !isNaN(r.score) ? r.score : 0,
-          heading: r.heading || undefined,
-        }));
-
-      console.log(`[Agent] RAG 自动注入: 找到 ${ragResults.length} 个相关笔记`);
-
-      return {
-        ...context,
-        ragResults,
-      };
+      return { ...context, ragResults: validResults };
     } catch (error) {
       console.error("[Agent] RAG 搜索失败:", error);
       return context;
     }
   }
 
-  /**
-   * 构建用户消息内容
-   */
-  private buildUserContent(message: string, context: TaskContext): string {
-    let content = `<task>\n${message}\n</task>`;
+  // ============ 辅助方法 ============
 
-    // 如果有当前打开的笔记，添加其内容
-    if (context.activeNote && context.activeNoteContent) {
-      content += `\n\n<current_note path="${context.activeNote}">\n${context.activeNoteContent}\n</current_note>`;
+  private parseLLMResponse(response: LLMResponse) {
+    let toolCalls: ToolCall[] = [];
+    let isCompletion = false;
+    let isFCMode = false;
+
+    if (response.toolCalls && response.toolCalls.length > 0) {
+      isFCMode = true;
+      toolCalls = response.toolCalls.map(tc => ({
+        name: tc.name,
+        params: tc.arguments,
+        raw: JSON.stringify(tc),
+      }));
+      isCompletion = toolCalls.some(tc => tc.name === "attempt_completion");
+    } else {
+      const parsed = parseResponse(response.content);
+      toolCalls = parsed.toolCalls;
+      isCompletion = parsed.isCompletion;
+    }
+    return { toolCalls, isCompletion, content: response.content, isFCMode };
+  }
+
+  private handleNoToolResponse(content: string, context: TaskContext): boolean {
+    const cleanContent = content.replace(/<thinking>[\s\S]*?<\/thinking>/g, "").trim();
+    const intent = context.intent;
+    
+    // 允许纯文本的情况
+    if (intent === "chat") {
+        this.stateManager.setStatus("completed");
+        return true;
     }
 
-    // RAG 自动注入：添加 top 3 相关笔记的详细内容
+    const isActionIntent = ["create", "edit", "organize"].includes(intent || "");
+    const isQuestion = cleanContent.includes("?") || cleanContent.includes("？");
+    const hasPotentialToolTag = /<[a-z]+(_[a-z]+)+/i.test(cleanContent);
+
+    // 如果不是强制操作意图，或者是提问，允许通过
+    if (!hasPotentialToolTag && cleanContent.length > 0) {
+        if (isQuestion || (!isActionIntent)) {
+            this.stateManager.setStatus("completed");
+            return true;
+        }
+    }
+
+    // 视为逻辑错误
+    this.handleLoopError(new Error("Agent 未使用工具且不符合纯文本回复条件"));
+    if (this.stateManager.getStatus() === "error") return true;
+
+    this.stateManager.addMessage({ role: "user", content: getNoToolUsedPrompt() });
+    return false;
+  }
+
+  private handleLoopError(error: unknown): boolean {
+    if (error instanceof Error) {
+        if (error.name === "AbortError") {
+            this.stateManager.setStatus("aborted");
+            return true;
+        }
+        
+        // 记录逻辑错误
+        this.stateManager.incrementErrors();
+        if (this.stateManager.getConsecutiveErrors() >= CONFIG.MAX_CONSECUTIVE_LOGIC_ERRORS) {
+            this.stateManager.setStatus("error");
+            this.stateManager.setError(error.message);
+            return true;
+        } else {
+            // 反馈给 Agent
+            this.stateManager.addMessage({
+                role: "user",
+                content: `❌ 系统检测到异常: ${error.message}。\n请使用 <thinking> 标签分析原因并尝试修复。`
+            });
+            return false;
+        }
+    }
+    return true;
+  }
+
+  private handleFatalError(error: unknown): void {
+    if (error instanceof Error && error.name === "AbortError") {
+      this.stateManager.setStatus("aborted");
+    } else {
+      this.stateManager.setStatus("error");
+      this.stateManager.setError(error instanceof Error ? error.message : "未知错误");
+    }
+    this.cleanupApproval(false);
+  }
+
+  private buildUserContent(message: string, context: TaskContext): string {
+    let content = `<task>\n${message}\n</task>`;
+    if (context.activeNote && context.activeNoteContent) {
+        const noteContent = context.activeNoteContent.length > 15000 
+            ? context.activeNoteContent.slice(0, 15000) + "\n...(文件过长已截断)"
+            : context.activeNoteContent;
+        content += `\n\n<current_note path="${context.activeNote}">\n${noteContent}\n</current_note>`;
+    }
     if (context.ragResults && context.ragResults.length > 0) {
-      const topResults = context.ragResults.slice(0, 3);
-      content += `\n\n<related_notes hint="以下是与任务相关的笔记内容，可供参考">`;
-      topResults.forEach((r, i) => {
-        const preview = r.content.length > 600 ? r.content.slice(0, 600) + "..." : r.content;
-        content += `\n\n### ${i + 1}. ${r.filePath} (相关度: ${(r.score * 100).toFixed(0)}%)${r.heading ? ` - ${r.heading}` : ""}\n${preview}`;
+      content += `\n\n<related_notes hint="相关参考资料">`;
+      context.ragResults.forEach((r, i) => {
+        content += `\n\n### ${i + 1}. ${r.filePath}\n${r.content}`;
       });
       content += `\n</related_notes>`;
     }
-
     return content;
-  }
-
-  /**
-   * 处理错误
-   */
-  private handleError(error: unknown): void {
-    if (error instanceof Error) {
-      if (error.name === "AbortError") {
-        this.stateManager.setStatus("aborted");
-        return;
-      }
-
-      this.stateManager.incrementErrors();
-
-      if (this.stateManager.getConsecutiveErrors() >= MAX_CONSECUTIVE_ERRORS) {
-        this.stateManager.setStatus("error");
-        this.stateManager.setError(error.message);
-      } else {
-        // 添加错误信息让 LLM 重试
-        this.stateManager.addMessage({
-          role: "user",
-          content: `❌ 系统错误: ${error.message}。\n\n请使用 <thinking> 标签分析错误原因，并尝试修复或使用替代方案。`,
-        });
-      }
-    }
   }
 }
 
 // 导出单例
 let agentLoop: AgentLoop | null = null;
-
 export function getAgentLoop(): AgentLoop {
-  if (!agentLoop) {
-    agentLoop = new AgentLoop();
-  }
+  if (!agentLoop) agentLoop = new AgentLoop();
   return agentLoop;
 }
-
 export function resetAgentLoop(): void {
   agentLoop = null;
 }
