@@ -10,7 +10,6 @@ mod vector_db;
 mod llm;
 mod cef;
 
-#[cfg(debug_assertions)]
 use tauri::Manager;
 
 fn main() {
