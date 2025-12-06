@@ -642,10 +642,20 @@ export const useAgentStore = create<AgentState>()(
           const viewMessages = loopState.messages.filter((m) => m.role !== "system");
 
           set((state) => {
-            // 防止旧消息覆盖新消息（当 AgentLoop 还没同步时）
-            // 只有当 loop 的消息数量 >= 当前 store 的消息数量时才更新
-            const shouldUpdateMessages = viewMessages.length >= state.messages.length;
-            const finalMessages = shouldUpdateMessages ? viewMessages : state.messages;
+            // 增量合并 loop 消息，避免因 status_change 事件提前触发导致 UI 被清空
+            const existingMessages = state.messages ?? [];
+            let finalMessages: Message[] = existingMessages;
+
+            // 1) loop 有更长的消息列表时，追加差量
+            if (viewMessages.length > existingMessages.length) {
+              const newMessages = viewMessages.slice(existingMessages.length);
+              finalMessages = [...existingMessages, ...newMessages];
+            }
+            // 2) 当前 UI 没有消息，但 loop 有消息时，直接使用 loop 消息（例如切换到有历史的会话）
+            else if (existingMessages.length === 0 && viewMessages.length > 0) {
+              finalMessages = viewMessages;
+            }
+            // 3) loop 消息更短或为空时，不覆盖 UI，避免“闪清空”效果
 
             const newTitle = generateAgentTitleFromAssistant(finalMessages, "新对话");
 
