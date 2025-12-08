@@ -27,6 +27,24 @@ pub async fn save_file(path: String, content: String) -> Result<(), AppError> {
     fs::write_file_content(&path, &content)
 }
 
+/// Write binary file (for images, etc.)
+#[tauri::command]
+pub async fn write_binary_file(path: String, data: Vec<u8>) -> Result<(), AppError> {
+    let path = std::path::Path::new(&path);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, &data).map_err(AppError::from)
+}
+
+/// Read binary file and return as base64
+#[tauri::command]
+pub async fn read_binary_file_base64(path: String) -> Result<String, AppError> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let data = std::fs::read(&path)?;
+    Ok(STANDARD.encode(&data))
+}
+
 /// List directory with file tree
 #[tauri::command]
 pub async fn list_directory(path: String) -> Result<Vec<FileEntry>, AppError> {

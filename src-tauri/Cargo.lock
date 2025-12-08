@@ -2049,6 +2049,7 @@ checksum = "34080505efa8e45a4b816c349525ebe327ceaa8559756f0356cba97ef3bf7432"
 name = "lumina-note"
 version = "0.3.4"
 dependencies = [
+ "base64 0.22.1",
  "bincode",
  "chrono",
  "flate2",

@@ -28,6 +28,20 @@ export async function saveFile(path: string, content: string): Promise<void> {
 }
 
 /**
+ * Write binary file to disk (for images, etc.)
+ */
+export async function writeBinaryFile(path: string, data: Uint8Array): Promise<void> {
+  return invoke("write_binary_file", { path, data: Array.from(data) });
+}
+
+/**
+ * Read binary file and return as base64 string
+ */
+export async function readBinaryFileBase64(path: string): Promise<string> {
+  return invoke<string>("read_binary_file_base64", { path });
+}
+
+/**
  * List directory contents (recursive, .md files only)
  */
 export async function listDirectory(path: string): Promise<FileEntry[]> {

@@ -5,6 +5,7 @@ import { useAIStore } from "@/stores/useAIStore";
 import { useSplitStore } from "@/stores/useSplitStore";
 import { useUIStore } from "@/stores/useUIStore";
 import { parseLuminaLink } from "@/lib/annotations";
+import { writeBinaryFile, readBinaryFileBase64 } from "@/lib/tauri";
 import { EditorState, StateField, StateEffect, Compartment, Facet } from "@codemirror/state";
 import {
   EditorView,
@@ -164,6 +165,9 @@ const editorTheme = EditorView.theme({
   ".cm-code": { backgroundColor: "hsl(var(--muted))", padding: "2px 4px", borderRadius: "3px", fontFamily: "monospace" },
   ".cm-wikilink": { color: "hsl(var(--primary))", textDecoration: "underline", cursor: "pointer" },
   ".cm-voice-preview": { color: "hsl(var(--muted-foreground))", fontStyle: "italic", opacity: 0.8 },
+  ".cm-image-widget": { display: "block", margin: "8px 0" },
+  ".cm-image-info": { background: "hsl(var(--muted))", padding: "4px 8px", borderRadius: "4px", fontSize: "12px", color: "hsl(var(--muted-foreground))", marginBottom: "4px", fontFamily: "monospace" },
+  ".markdown-image": { maxWidth: "100%", borderRadius: "6px", cursor: "pointer" },
 });
 
 // ============ 4. Widgets ============
@@ -253,6 +257,72 @@ class VoicePreviewWidget extends WidgetType {
   constructor(readonly text: string) { super(); }
   eq(other: VoicePreviewWidget) { return other.text === this.text; }
   toDOM() { const s=document.createElement("span"); s.className="cm-voice-preview"; s.textContent=this.text; return s; }
+  ignoreEvent() { return true; }
+}
+
+class ImageWidget extends WidgetType {
+  constructor(readonly src: string, readonly alt: string, readonly showInfo: boolean = false, readonly vaultPath: string = "") { super(); }
+  eq(other: ImageWidget) { return other.src === this.src && other.alt === this.alt && other.showInfo === this.showInfo; }
+  toDOM() {
+    const container = document.createElement("div");
+    container.className = "cm-image-widget";
+    container.style.cssText = "display:block;margin:8px 0;";
+    container.dataset.widgetType = "image";
+    container.dataset.imageSrc = this.src;
+    
+    // 如果显示信息，添加路径提示
+    if (this.showInfo) {
+      const info = document.createElement("div");
+      info.className = "cm-image-info";
+      info.style.cssText = "background:hsl(var(--primary)/0.1);padding:4px 8px;border-radius:4px;font-size:12px;color:hsl(var(--primary));margin-bottom:4px;font-family:monospace;display:inline-block;";
+      info.textContent = this.src;
+      container.appendChild(info);
+    }
+    
+    const img = document.createElement("img");
+    img.alt = this.alt;
+    img.className = "markdown-image";
+    img.loading = "lazy";
+    img.style.cssText = "max-width:100%;border-radius:6px;cursor:pointer;";
+    
+    // 处理图片路径
+    if (this.src.startsWith("http") || this.src.startsWith("data:")) {
+      // 网络图片或 data URL
+      img.src = this.src;
+    } else if (this.vaultPath) {
+      // 本地图片：使用 base64 加载
+      const normalizedVaultPath = this.vaultPath.replace(/\\/g, '/');
+      const normalizedSrc = this.src.replace(/\\/g, '/').replace(/^\.\//,'');
+      const fullPath = normalizedSrc.startsWith("/") || normalizedSrc.match(/^[A-Za-z]:/) 
+        ? normalizedSrc 
+        : `${normalizedVaultPath}/${normalizedSrc}`;
+      
+      // 先显示加载中状态
+      img.style.opacity = "0.5";
+      img.alt = "加载中...";
+      
+      // 异步加载 base64
+      const ext = fullPath.split('.').pop()?.toLowerCase() || 'png';
+      const mimeType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 
+                       ext === 'gif' ? 'image/gif' : 
+                       ext === 'webp' ? 'image/webp' : 'image/png';
+      
+      readBinaryFileBase64(fullPath)
+        .then(base64 => {
+          img.src = `data:${mimeType};base64,${base64}`;
+          img.style.opacity = "1";
+          img.alt = this.alt;
+        })
+        .catch(err => {
+          console.error('[ImageWidget] 图片加载失败:', fullPath, err);
+          img.alt = `图片加载失败: ${this.src}`;
+          img.style.opacity = "1";
+        });
+    }
+    
+    container.appendChild(img);
+    return container;
+  }
   ignoreEvent() { return true; }
 }
 
@@ -428,7 +498,11 @@ const tableKeymap = [
             const pipes = (line.text.match(/\|/g) || []).length;
             if (pipes < 2) return false;
             const row = "\n" + "|  ".repeat(Math.max(1, pipes - 1)) + "|";
-            view.dispatch({ changes: { from: head, insert: row }, selection: { anchor: head + 4 }, scrollIntoView: true });
+            view.dispatch({
+              changes: { from: head, insert: row },
+              selection: { anchor: head + 4 },
+              scrollIntoView: true
+            });
             return true;
         }
     }
@@ -516,6 +590,72 @@ function buildCalloutDecorations(state: EditorState): DecorationSet {
   return Decoration.set(decorations.sort((a,b)=>a.from-b.from), true);
 }
 
+// ============ 7. Image StateField ============
+
+// 用于跟踪哪些图片应该显示信息
+const setImageShowInfo = StateEffect.define<{ src: string; show: boolean }>();
+const imageInfoField = StateField.define<Set<string>>({
+  create: () => new Set(),
+  update(val, tr) {
+    let result = val;
+    for (const e of tr.effects) {
+      if (e.is(setImageShowInfo)) {
+        result = new Set(result);
+        if (e.value.show) result.add(e.value.src);
+        else result.delete(e.value.src);
+      }
+    }
+    return result;
+  },
+});
+
+// 创建图片装饰的工厂函数
+function createImageStateField(vaultPath: string) {
+  return StateField.define<DecorationSet>({
+    create: (state) => buildImageDecorations(state, vaultPath),
+    update(deco, tr) {
+      if (tr.docChanged || tr.selection || tr.reconfigured || tr.effects.some(e => e.is(setMouseSelecting) || e.is(setImageShowInfo))) {
+        return buildImageDecorations(tr.state, vaultPath);
+      }
+      return deco.map(tr.changes);
+    },
+    provide: f => EditorView.decorations.from(f),
+  });
+}
+
+function buildImageDecorations(state: EditorState, vaultPath: string): DecorationSet {
+  const decorations: any[] = [];
+  const doc = state.doc.toString();
+  const showInfoSet = state.field(imageInfoField, false) || new Set<string>();
+  
+  // 匹配 Markdown 图片语法 ![alt](src)
+  const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+  let match;
+  while ((match = imageRegex.exec(doc)) !== null) {
+    const from = match.index, to = from + match[0].length;
+    const alt = match[1];
+    const src = match[2];
+    
+    if (shouldShowSource(state, from, to)) {
+      // 编辑模式：显示源码 + 图片预览
+      decorations.push(Decoration.mark({ class: "cm-image-source" }).range(from, to));
+      decorations.push(Decoration.widget({ 
+        widget: new ImageWidget(src, alt, true, vaultPath), 
+        side: 1, 
+        block: true 
+      }).range(to));
+    } else {
+      // 预览模式：替换为图片
+      const showInfo = showInfoSet.has(src);
+      decorations.push(Decoration.replace({ 
+        widget: new ImageWidget(src, alt, showInfo, vaultPath), 
+        block: true 
+      }).range(from, to));
+    }
+  }
+  return Decoration.set(decorations.sort((a,b)=>a.from-b.from), true);
+}
+
 const readingModePlugin = ViewPlugin.fromClass(class {
   decorations: DecorationSet;
   constructor(view: EditorView) { this.decorations = this.build(view.state); }
@@ -580,7 +720,7 @@ const voicePreviewField = StateField.define<DecorationSet>({
   provide: f => EditorView.decorations.from(f),
 });
 
-// ============ 9. React 组件 ============
+// ============ 10. React 组件 ============
 
 export const CodeMirrorEditor = forwardRef<CodeMirrorEditorRef, CodeMirrorEditorProps>(
   function CodeMirrorEditor({ content, onChange, className = "", viewMode, livePreview }, ref) {
@@ -593,18 +733,20 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorRef, CodeMirrorEditor
     const isExternalChange = useRef(false);
     const lastInternalContent = useRef<string>(content);
 
-    const { openVideoNoteTab, openPDFTab, fileTree, openFile } = useFileStore();
+    const { openVideoNoteTab, openPDFTab, fileTree, openFile, vaultPath } = useFileStore();
     const { openSecondaryPdf } = useSplitStore();
     const { setSplitView } = useUIStore();
-
+    
     const getModeExtensions = useCallback((mode: ViewMode) => {
+      const imageField = vaultPath ? createImageStateField(vaultPath) : null;
       const widgets = [mathStateField, tableStateField, codeBlockStateField, calloutStateField];
+      if (imageField) widgets.push(imageField);
       switch (mode) {
         case 'reading': return [collapseOnSelectionFacet.of(false), readingModePlugin, ...widgets];
         case 'live': return [collapseOnSelectionFacet.of(true), livePreviewPlugin, ...widgets];
         case 'source': default: return [calloutStateField]; 
       }
-    }, []);
+    }, [vaultPath]);
 
     useImperativeHandle(ref, () => ({
       getScrollLine: () => {
@@ -637,6 +779,7 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorRef, CodeMirrorEditor
           wikiLinkStateField,
           voicePreviewField,
           markdownStylePlugin,
+          imageInfoField,
           
           EditorView.updateListener.of((update) => {
             if (update.docChanged && !isExternalChange.current) {
@@ -651,21 +794,104 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorRef, CodeMirrorEditor
       const view = new EditorView({ state, parent: containerRef.current });
       viewRef.current = view;
 
+      // Paste Handler for Images
+      const handlePaste = async (e: ClipboardEvent) => {
+        const v = viewRef.current;
+        // 从 store 获取最新的 vaultPath
+        const currentVaultPath = useFileStore.getState().vaultPath;
+        console.log('[Image Paste] vaultPath:', currentVaultPath);
+        if (!v || !currentVaultPath) {
+          console.log('[Image Paste] 跳过: view 或 vaultPath 为空');
+          return;
+        }
+        
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        
+        for (const item of items) {
+          console.log('[Image Paste] item type:', item.type);
+          if (item.type.startsWith('image/')) {
+            e.preventDefault();
+            
+            const file = item.getAsFile();
+            if (!file) continue;
+            
+            const ext = file.type.split('/')[1] || 'png';
+            const timestamp = Date.now();
+            const fileName = `image_${timestamp}.${ext}`;
+            // Windows 路径处理
+            const normalizedVaultPath = currentVaultPath.replace(/\\/g, '/');
+            const filePath = `${normalizedVaultPath}/${fileName}`;
+            
+            try {
+              const arrayBuffer = await file.arrayBuffer();
+              const data = new Uint8Array(arrayBuffer);
+              await writeBinaryFile(filePath, data);
+              
+              const pos = v.state.selection.main.head;
+              const imageMarkdown = `![](${fileName})`;
+              v.dispatch({
+                changes: { from: pos, insert: imageMarkdown },
+                selection: { anchor: pos + imageMarkdown.length },
+              });
+              console.log('[Image] 图片已保存:', filePath);
+            } catch (err) {
+              console.error('[Image] 保存图片失败:', err);
+            }
+            return;
+          }
+        }
+      };
+
       // Click Handler for Widgets
       const handleClick = (e: MouseEvent) => {
         const target = e.target as HTMLElement;
-        const view = viewRef.current;
-        if (!view) return;
+        const v = viewRef.current;
+        if (!v) return;
+
+        // 0. Image Widget 点击处理
+        const imageWidget = target.closest('[data-widget-type="image"]') as HTMLElement;
+        if (imageWidget) {
+          const src = imageWidget.dataset.imageSrc;
+          if (src) {
+            e.preventDefault();
+            const currentShowInfo = v.state.field(imageInfoField, false) || new Set<string>();
+            const isShowing = currentShowInfo.has(src);
+            
+            // 如果点击的是路径信息区域，或者已经显示路径信息再次点击 -> 聚焦到源码
+            const clickedInfo = target.closest('.cm-image-info');
+            if (clickedInfo || isShowing) {
+              // 查找图片源码位置并聚焦
+              const doc = v.state.doc.toString();
+              const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+              let match;
+              while ((match = imageRegex.exec(doc)) !== null) {
+                if (match[2] === src) {
+                  const pos = match.index;
+                  v.focus();
+                  v.dispatch({ 
+                    selection: { anchor: pos + 2 }, // 定位到 alt 文本位置
+                    effects: setImageShowInfo.of({ src, show: false })
+                  });
+                  return;
+                }
+              }
+            } else {
+              // 第一次点击：显示路径信息
+              v.dispatch({ effects: setImageShowInfo.of({ src, show: true }) });
+            }
+          }
+          return;
+        }
 
         // 1. Math/Table Widget 点击 -> 聚焦源码
         const widgetDom = target.closest('[data-widget-type="math"], [data-widget-type="table"]');
         if (widgetDom) {
-           const pos = view.posAtDOM(widgetDom);
+           const pos = v.posAtDOM(widgetDom);
            if (pos !== null) {
               e.preventDefault();
-              view.focus();
-              // 强制将光标置入 Widget 内部 (pos + 1)，确保触发 shouldShowSource -> true
-              view.dispatch({ selection: { anchor: pos + 1 } });
+              v.focus();
+              v.dispatch({ selection: { anchor: pos + 1 } });
               return;
            }
         }
@@ -698,7 +924,12 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorRef, CodeMirrorEditor
       };
 
       view.contentDOM.addEventListener('mousedown', handleClick);
-      return () => { view.destroy(); viewRef.current = null; };
+      view.contentDOM.addEventListener('paste', handlePaste);
+      return () => { 
+        view.contentDOM.removeEventListener('paste', handlePaste);
+        view.destroy(); 
+        viewRef.current = null; 
+      };
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); 
 

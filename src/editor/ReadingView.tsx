@@ -1,9 +1,10 @@
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useEffect, useRef } from "react";
 import { parseMarkdown } from "@/lib/markdown";
 import { useFileStore } from "@/stores/useFileStore";
 import { useSplitStore } from "@/stores/useSplitStore";
 import { useUIStore } from "@/stores/useUIStore";
 import { parseLuminaLink } from "@/lib/annotations";
+import { readBinaryFileBase64 } from "@/lib/tauri";
 
 interface ReadingViewProps {
   content: string;
@@ -11,13 +12,50 @@ interface ReadingViewProps {
 }
 
 export function ReadingView({ content, className = "" }: ReadingViewProps) {
-  const { fileTree, openFile } = useFileStore();
+  const { fileTree, openFile, vaultPath } = useFileStore();
   const { openSecondaryPdf } = useSplitStore();
   const { setSplitView } = useUIStore();
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const html = useMemo(() => {
     return parseMarkdown(content);
   }, [content]);
+
+  // 转换本地图片路径为 base64 data URL
+  useEffect(() => {
+    if (!containerRef.current || !vaultPath) return;
+    
+    const images = containerRef.current.querySelectorAll('img.markdown-image');
+    images.forEach((imgEl) => {
+      const img = imgEl as HTMLImageElement;
+      const src = img.getAttribute('src');
+      if (src && !src.startsWith('http') && !src.startsWith('data:')) {
+        // 本地图片：使用 base64 加载
+        const normalizedVaultPath = vaultPath.replace(/\\/g, '/');
+        const normalizedSrc = src.replace(/\\/g, '/').replace(/^\.\//,'');
+        const fullPath = normalizedSrc.startsWith('/') || /^[A-Za-z]:/.test(normalizedSrc)
+          ? normalizedSrc
+          : `${normalizedVaultPath}/${normalizedSrc}`;
+        
+        img.style.opacity = '0.5';
+        const ext = fullPath.split('.').pop()?.toLowerCase() || 'png';
+        const mimeType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 
+                         ext === 'gif' ? 'image/gif' : 
+                         ext === 'webp' ? 'image/webp' : 'image/png';
+        
+        readBinaryFileBase64(fullPath)
+          .then(base64 => {
+            img.src = `data:${mimeType};base64,${base64}`;
+            img.style.opacity = '1';
+          })
+          .catch(err => {
+            console.error('[ReadingView] 图片加载失败:', fullPath, err);
+            img.alt = `图片加载失败: ${src}`;
+            img.style.opacity = '1';
+          });
+      }
+    });
+  }, [html, vaultPath]);
 
   // Handle WikiLink, Tag, and Lumina link clicks
   const handleClick = useCallback((e: React.MouseEvent) => {
@@ -90,6 +128,7 @@ export function ReadingView({ content, className = "" }: ReadingViewProps) {
 
   return (
     <div
+      ref={containerRef}
       className={`reading-view prose prose-neutral dark:prose-invert max-w-none ${className}`}
       dangerouslySetInnerHTML={{ __html: html }}
       onClick={handleClick}
