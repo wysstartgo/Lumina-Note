@@ -666,6 +666,30 @@ body {
   /* animation removed for smooth mode switching */
 }
 
+/* Mermaid 图表容器 */
+.mermaid-container {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: hsl(var(--muted) / 0.3);
+  border-radius: 0.5rem;
+  overflow-x: auto;
+}
+
+.mermaid-container .mermaid {
+  display: flex;
+  justify-content: center;
+}
+
+.mermaid-container svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* 暗色主题下的 mermaid */
+.dark .mermaid-container {
+  background: hsl(var(--muted) / 0.2);
+}
+
 /* Mode switcher button animation */
 .mode-switcher-btn {
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);

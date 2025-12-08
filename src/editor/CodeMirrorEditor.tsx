@@ -21,9 +21,18 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { syntaxTree } from "@codemirror/language";
 import katex from "katex";
 import { common, createLowlight } from "lowlight";
+import mermaid from "mermaid";
 
 // Initialize lowlight
 const lowlight = createLowlight(common);
+
+// Initialize mermaid
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'default',
+  securityLevel: 'loose',
+  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+});
 
 export type ViewMode = 'reading' | 'live' | 'source';
 
@@ -240,10 +249,50 @@ class CodeBlockWidget extends WidgetType {
   hastToDOM(nodes: any[], parent: HTMLElement) {
     for (const node of nodes) {
       if (node.type==='text') parent.appendChild(document.createTextNode(node.value));
-      else if (node.type==='element') { const el=document.createElement(node.tagName); if(node.properties?.className) el.className=node.properties.className.join(' '); if(node.children) this.hastToDOM(node.children, el); parent.appendChild(el); }
+      else if (node.type==='element') { 
+        const el=document.createElement(node.tagName); 
+        if(node.properties?.className) el.className=node.properties.className.join(' '); 
+        if(node.children) this.hastToDOM(node.children, el); 
+        parent.appendChild(el); 
+      }
     }
   }
   ignoreEvent() { return false; }
+}
+
+// Mermaid 图表 Widget
+class MermaidWidget extends WidgetType {
+  constructor(readonly code: string) { super(); }
+  eq(other: MermaidWidget) { return other.code === this.code; }
+  toDOM() {
+    const container = document.createElement("div");
+    container.className = "mermaid-container my-2";
+    
+    const pre = document.createElement("pre");
+    pre.className = "mermaid";
+    pre.textContent = this.code;
+    container.appendChild(pre);
+    
+    // 异步渲染 mermaid
+    setTimeout(async () => {
+      try {
+        const isDark = document.documentElement.classList.contains('dark');
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: isDark ? 'dark' : 'default',
+          securityLevel: 'loose',
+        });
+        await mermaid.run({ nodes: [pre] });
+      } catch (err) {
+        console.error('[Mermaid] 渲染失败:', err);
+        pre.textContent = `Mermaid Error: ${this.code}`;
+        pre.style.color = 'red';
+      }
+    }, 0);
+    
+    return container;
+  }
+  ignoreEvent() { return true; }
 }
 
 class CalloutIconWidget extends WidgetType {
@@ -522,9 +571,13 @@ function buildCodeBlockDecorations(state: EditorState): DecorationSet {
         const text = state.doc.sliceString(node.from, node.to);
         const lines = text.split('\n');
         if (lines.length < 2) return;
-        const lang = lines[0].replace(/^\s*`{3,}/, "").trim();
+        const lang = lines[0].replace(/^\s*`{3,}/, "").trim().toLowerCase();
         const code = lines.slice(1, lines.length - 1).join('\n');
-        decorations.push(Decoration.replace({ widget: new CodeBlockWidget(code, lang), block: true }).range(node.from, node.to));
+        // Mermaid 图表使用专门的 Widget
+        const widget = lang === 'mermaid' 
+          ? new MermaidWidget(code)
+          : new CodeBlockWidget(code, lang);
+        decorations.push(Decoration.replace({ widget, block: true }).range(node.from, node.to));
       }
     }
   });

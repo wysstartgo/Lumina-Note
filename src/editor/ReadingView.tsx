@@ -5,6 +5,15 @@ import { useSplitStore } from "@/stores/useSplitStore";
 import { useUIStore } from "@/stores/useUIStore";
 import { parseLuminaLink } from "@/lib/annotations";
 import { readBinaryFileBase64 } from "@/lib/tauri";
+import mermaid from "mermaid";
+
+// 初始化 mermaid
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'default',
+  securityLevel: 'loose',
+  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+});
 
 interface ReadingViewProps {
   content: string;
@@ -20,6 +29,36 @@ export function ReadingView({ content, className = "" }: ReadingViewProps) {
   const html = useMemo(() => {
     return parseMarkdown(content);
   }, [content]);
+
+  // 渲染 Mermaid 图表
+  useEffect(() => {
+    if (!containerRef.current) return;
+    
+    const mermaidElements = containerRef.current.querySelectorAll('.mermaid');
+    if (mermaidElements.length === 0) return;
+    
+    // 异步渲染 mermaid
+    const renderMermaid = async () => {
+      try {
+        // 重新初始化以支持主题切换
+        const isDark = document.documentElement.classList.contains('dark');
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: isDark ? 'dark' : 'default',
+          securityLevel: 'loose',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        });
+        
+        await mermaid.run({
+          nodes: mermaidElements as NodeListOf<HTMLElement>,
+        });
+      } catch (err) {
+        console.error('[Mermaid] 渲染失败:', err);
+      }
+    };
+    
+    renderMermaid();
+  }, [html]);
 
   // 转换本地图片路径为 base64 data URL
   useEffect(() => {

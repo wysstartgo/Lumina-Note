@@ -243,7 +243,22 @@ export function parseMarkdown(markdown: string): string {
     const codeBlockPrefix = "⟦CODE_BLOCK_";
     const codeBlockSuffix = "⟧";
     
-    // 保护代码块 ```...```
+    // 处理 Mermaid 代码块 - 转换为特殊容器供后续渲染
+    const mermaidPlaceholders: string[] = [];
+    const mermaidPrefix = "⟦MERMAID_BLOCK_";
+    const mermaidSuffix = "⟧";
+    
+    processed = processed.replace(/```mermaid\s*([\s\S]*?)```/gi, (_match, code) => {
+      const escapedCode = code.trim()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+      mermaidPlaceholders.push(escapedCode);
+      return `${mermaidPrefix}${mermaidPlaceholders.length - 1}${mermaidSuffix}`;
+    });
+    
+    // 保护其他代码块 ```...```
     processed = processed.replace(/```[\s\S]*?```/g, (match) => {
       codeBlockPlaceholders.push(match);
       return `${codeBlockPrefix}${codeBlockPlaceholders.length - 1}${codeBlockSuffix}`;
@@ -284,6 +299,14 @@ export function parseMarkdown(markdown: string): string {
       const placeholder = `${mathPlaceholderPrefix}${index}${mathPlaceholderSuffix}`;
       // Replace global occurrences
       html = (html as string).split(placeholder).join(mathHtml);
+    });
+
+    // 5.5 Restore Mermaid Placeholders - 转换为 mermaid 容器
+    mermaidPlaceholders.forEach((code, index) => {
+      const placeholder = `${mermaidPrefix}${index}${mermaidSuffix}`;
+      // 创建 mermaid 容器，code 存储在 data 属性中
+      const mermaidHtml = `<div class="mermaid-container"><pre class="mermaid">${code}</pre></div>`;
+      html = (html as string).split(placeholder).join(mermaidHtml);
     });
 
     // 6. Wrap tables in a scrollable container to fix alignment issues
