@@ -13,11 +13,33 @@ Build your second brain with a Markdown note app deeply integrated with AI Agent
 [![Rust](https://img.shields.io/badge/Rust-Backend-dea584?style=flat-square&logo=rust&logoColor=black)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square)](LICENSE)
 
-[中文文档 / Chinese README](./README.md)
+**Language**: [简体中文](./README.md) · English · [日本語](./README.ja.md)
+
+[Quick Start](#-getting-started) • [Features](#-core-features) • [Usage Guide](#-usage-guide) • [Architecture](#️-architecture-high-level)
 
 </div>
 
 <br/>
+
+## 📸 Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/ai-agent.png" alt="AI Agent" width="800" />
+  <br/>
+  <em>AI Agent - Deep Search & Note Summarization</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/knowledge-graph.png" alt="Knowledge Graph" width="800" />
+  <br/>
+  <em>Knowledge Graph - Visualize Note Connections</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/editor-latex.png" alt="Editor" width="800" />
+  <br/>
+  <em>Editor - LaTeX Formulas & Backlinks</em>
+</p>
 
 ---
 
@@ -231,10 +253,7 @@ The server runs at `http://localhost:8080`.
    - Choose a provider and fill in your API key / base URL if needed
    - Click **Save**
 
-2. **Supported providers (8)**:
-   - Anthropic, OpenAI, Gemini, DeepSeek, Moonshot, Groq, OpenRouter, Ollama (local).
-
-3. **Where you can use AI (all support Chat & Agent modes)**:
+2. **Where you can use AI (all support Chat & Agent modes)**:
    - **Right-side AI panel**  
      Use the AI tab in the right sidebar to chat or run agents with the current note as context.
    - **Floating AI ball**  
@@ -269,19 +288,6 @@ The server runs at `http://localhost:8080`.
 - Define database structure in a `.db.json` file.
 - Attach notes to a database via YAML frontmatter (`db: projects`).
 - Use table or Kanban view to browse & edit; changes sync back into note YAML.
-
----
-
-## ⌨️ Keyboard Shortcuts
-
-| Shortcut | Action |
-| :------- | :----- |
-| `Ctrl/Cmd + P` | Command palette |
-| `Ctrl/Cmd + S` | Save current file |
-| `Ctrl/Cmd + N` | New note |
-| `Ctrl/Cmd + Shift + F` | Global search (semantic + keyword) |
-| `Ctrl/Cmd + B` | Toggle sidebar |
-| `Ctrl/Cmd + Click` | Open link in split pane |
 
 ---
 
@@ -328,6 +334,14 @@ See the Chinese README or `docs/` for more implementation details. In short:
 - [ ] **Plugin System**: Plugin API design
 - [ ] **Sync**: WebDAV / Git sync support
 - [ ] **Mobile**: iOS / Android adaptation
+
+---
+
+## 🤝 Contributors
+
+<a href="https://github.com/blueberrycongee/Lumina-Note/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=blueberrycongee/Lumina-Note" />
+</a>
 
 ---
 

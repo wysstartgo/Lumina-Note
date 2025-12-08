@@ -13,7 +13,7 @@
 [![Rust](https://img.shields.io/badge/Rust-Backend-dea584?style=flat-square&logo=rust&logoColor=black)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square)](LICENSE)
 
-**Language**：简体中文 · [English README](./README.en.md)
+**Language**: 简体中文 · [English](./README.en.md) · [日本語](./README.ja.md)
 
 [快速开始](#-快速开始) • [功能特性](#-核心特性) • [使用指南](#-使用指南) • [技术架构](#-技术架构)
 
@@ -89,8 +89,6 @@ Lumina Note 不仅仅是一个编辑器，它是一个集成了 LLM 能力的知
 | **时间跳转** | 点击笔记时间戳，视频自动跳转到对应位置（无需刷新）           |
 | **自动保存** | 笔记自动保存为 Markdown 文件，下次打开同一视频自动加载       |
 
-> 💡 技术亮点：使用 Tauri 2.0 多 WebView 功能实现真正的内嵌播放，突破 iframe 的 CSRF 限制
-
 ### 📄 PDF 智能阅读器
 
 为学术工作流优化的 PDF 阅读和标注系统。
@@ -104,8 +102,6 @@ Lumina Note 不仅仅是一个编辑器，它是一个集成了 LLM 能力的知
 | **缩略图与目录**   | 侧边栏显示页面缩略图和文档大纲，快速跳转                 |
 | **全文搜索**       | 支持在 PDF 中搜索关键词，实时高亮匹配结果                |
 | **与 AI 对话**     | 将选中的 PDF 内容发送给 AI，进行摘要、翻译或解释         |
-
-> 💡 技术亮点：批注存储为纯 Markdown 文件，支持 `lumina://pdf` 协议链接跳转，完全离线可用
 
 ### 🎨 主题系统
 
@@ -313,19 +309,7 @@ graph TD
    - 选择模型提供商，填入你的 API Key
    - 点击保存
 
-2. **支持的模型**（8 个提供商）：
-   | 提供商 | 模型 | 特点 |
-   |--------|------|------|
-   | **Anthropic** | Claude 3.5/3 | 最强推理能力 |
-   | **OpenAI** | GPT-4o/4 | 通用能力强 |
-   | **DeepSeek** | DeepSeek Chat/R1 | 性价比高 |
-   | **Moonshot** | Kimi K2 | 中文优化 |
-   | **Gemini** | Gemini 2.0/1.5 | Google 出品 |
-   | **Groq** | Llama/Mixtral | 速度极快 |
-   | **OpenRouter** | 多模型网关 | 一个 Key 用多模型 |
-   | **Ollama** | 本地模型 | 完全离线，无需 Key |
-
-3. **使用入口（3 个）——都支持 Chat / Agent 模式**：
+2. **使用入口（3 个）——都支持 Chat / Agent 模式**：
 
    - **右侧 AI 面板**  
      在右侧栏切换到 **AI** Tab，可在当前笔记上下文中聊天或使用 Agent。
@@ -369,19 +353,6 @@ graph TD
 2. **添加数据**：在笔记 YAML frontmatter 中添加 `db: 数据库ID`
 3. **视图**：支持表格视图和看板视图
 4. **编辑**：直接在表格/看板中编辑，自动同步回笔记文件
-
----
-
-## ⌨️ 快捷键指南
-
-| 组合键                 | 作用                         |
-| :--------------------- | :--------------------------- |
-| `Ctrl/Cmd + P`         | **命令面板** (类似于 VSCode) |
-| `Ctrl/Cmd + S`         | 保存当前文件                 |
-| `Ctrl/Cmd + N`         | 新建笔记                     |
-| `Ctrl/Cmd + Shift + F` | 全局语义/关键字搜索          |
-| `Ctrl/Cmd + B`         | 切换侧边栏显隐               |
-| `Ctrl/Cmd + Click`     | 分栏打开链接                 |
 
 ---
 
@@ -476,12 +447,14 @@ lumina-note/
 
 ---
 
-## 🤝 致谢与协议
+## 🤝 贡献者
 
-**Credits**
+<a href="https://github.com/blueberrycongee/Lumina-Note/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=blueberrycongee/Lumina-Note" />
+</a>
 
-- Agent 架构与流式处理部分参考了 [Roo-Code](https://github.com/RooVetGit/Roo-Code) 的优秀实现。
+---
 
-**License**
+## 📄 许可证
 
-- 本项目基于 [Apache License 2.0](LICENSE) 开源。
+本项目基于 [Apache License 2.0](LICENSE) 开源。
