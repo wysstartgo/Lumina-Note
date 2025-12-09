@@ -58,19 +58,30 @@ export function AISettingsModal({ isOpen, onClose }: AISettingsModalProps) {
   // 解析错误信息
   const parseError = useCallback((error: unknown): string => {
     const errorStr = String(error);
+    const errorLower = errorStr.toLowerCase();
     
-    // 检查 HTTP 状态码
-    for (const [code, msg] of Object.entries(ERROR_MESSAGES)) {
-      if (errorStr.includes(code) || errorStr.toLowerCase().includes(code)) {
-        return msg;
+    // 精确匹配 HTTP 状态码（避免误匹配）
+    const statusCodePatterns: [RegExp, string][] = [
+      [/\b401\b|status[:\s]*401/i, "401"],
+      [/\b403\b|status[:\s]*403/i, "403"],
+      [/\b404\b|status[:\s]*404/i, "404"],
+      [/\b429\b|status[:\s]*429/i, "429"],
+      [/\b500\b|status[:\s]*500/i, "500"],
+      [/\b502\b|status[:\s]*502/i, "502"],
+      [/\b503\b|status[:\s]*503/i, "503"],
+    ];
+    
+    for (const [pattern, code] of statusCodePatterns) {
+      if (pattern.test(errorStr) && ERROR_MESSAGES[code]) {
+        return ERROR_MESSAGES[code];
       }
     }
     
     // 检查常见错误关键词
-    if (errorStr.toLowerCase().includes("timeout")) return ERROR_MESSAGES.timeout;
-    if (errorStr.toLowerCase().includes("network") || errorStr.toLowerCase().includes("fetch")) return ERROR_MESSAGES.network;
-    if (errorStr.toLowerCase().includes("econnrefused") || errorStr.toLowerCase().includes("connection refused")) return ERROR_MESSAGES.connection_refused;
-    if (errorStr.toLowerCase().includes("unauthorized") || errorStr.toLowerCase().includes("invalid api key")) return ERROR_MESSAGES["401"];
+    if (errorLower.includes("timeout")) return ERROR_MESSAGES.timeout;
+    if (errorLower.includes("econnrefused") || errorLower.includes("connection refused")) return ERROR_MESSAGES.connection_refused;
+    if (errorLower.includes("unauthorized") || errorLower.includes("invalid api key") || errorLower.includes("invalid_api_key")) return ERROR_MESSAGES["401"];
+    if (errorLower.includes("network error") || errorLower.includes("failed to fetch")) return ERROR_MESSAGES.network;
     
     // 返回原始错误（截断过长的）
     return errorStr.length > 100 ? errorStr.slice(0, 100) + "..." : errorStr;
