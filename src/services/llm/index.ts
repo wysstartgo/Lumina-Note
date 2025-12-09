@@ -5,6 +5,9 @@
 // 类型导出
 export type {
   Message,
+  MessageContent,
+  ImageContent,
+  TextContent,
   LLMConfig,
   LLMOptions,
   LLMResponse,

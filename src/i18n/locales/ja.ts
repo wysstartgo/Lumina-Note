@@ -135,6 +135,9 @@ export default {
     notTriggered: '未トリガー',
     noIntentData: 'インテントデータなし',
     noMsgs: 'メッセージがありません。メッセージを送信してデバッグを開始',
+    attachImage: '画像を追加',
+    modelNoVision: '現在のモデルは画像をサポートしていません',
+    imageAttached: '{count} 枚の画像を追加しました',
   },
   
   // 設定

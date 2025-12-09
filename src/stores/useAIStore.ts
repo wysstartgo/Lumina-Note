@@ -13,8 +13,9 @@ import {
   getAIConfig,
 } from "@/lib/ai";
 import { readFile } from "@/lib/tauri";
-import { callLLMStream } from "@/services/llm";
+import { callLLMStream, type ImageContent, type TextContent, type MessageContent } from "@/services/llm";
 import { encryptApiKey, decryptApiKey } from "@/lib/crypto";
+import type { AttachedImage } from "@/components/chat/ChatInput";
 // 流式状态现在完全由 Zustand 管理，不再需要额外的 streamingStore
 
 // Pending diff for preview
@@ -49,10 +50,22 @@ interface ChatSession {
   messages: Message[];
 }
 
+// 从消息内容中提取文本（处理多模态内容）
+function getTextFromContent(content: MessageContent): string {
+  if (typeof content === 'string') {
+    return content;
+  }
+  // 多模态内容：提取所有文本部分
+  return content
+    .filter(item => item.type === 'text')
+    .map(item => (item as TextContent).text)
+    .join('\n');
+}
+
 function generateSessionTitleFromMessages(messages: Message[], fallback: string = "新对话"): string {
   const firstUser = messages.find((m) => m.role === "user");
   if (!firstUser || !firstUser.content) return fallback;
-  const raw = firstUser.content.replace(/\s+/g, " ").trim();
+  const raw = getTextFromContent(firstUser.content).replace(/\s+/g, " ").trim();
   if (!raw) return fallback;
   const maxLen = 20;
   return raw.length > maxLen ? `${raw.slice(0, maxLen)}...` : raw;
@@ -123,8 +136,8 @@ interface AIState {
   clearTextSelections: () => void;
 
   // Actions
-  sendMessage: (content: string, currentFile?: { path: string; name: string; content: string }, displayContent?: string) => Promise<void>;
-  sendMessageStream: (content: string, currentFile?: { path: string; name: string; content: string }, displayContent?: string) => Promise<void>;
+  sendMessage: (content: string, currentFile?: { path: string; name: string; content: string }, displayContent?: string, images?: AttachedImage[]) => Promise<void>;
+  sendMessageStream: (content: string, currentFile?: { path: string; name: string; content: string }, displayContent?: string, images?: AttachedImage[]) => Promise<void>;
   stopStreaming: () => void;
   clearChat: () => void;
   retry: (currentFile?: { path: string; name: string; content: string }) => Promise<void>;  // 重新生成
@@ -454,11 +467,34 @@ export const useAIStore = create<AIState>()(
       },
 
       // 流式发送消息
-      sendMessageStream: async (content, currentFile, displayContent) => {
+      sendMessageStream: async (content, currentFile, displayContent, images) => {
         const { referencedFiles, config, currentSessionId } = get();
 
+        // 构建用户消息内容（支持多模态）
+        let userMessageContent: MessageContent;
+        if (images && images.length > 0) {
+          // 多模态消息：文本 + 图片
+          const parts: (TextContent | ImageContent)[] = [];
+          if (displayContent || content) {
+            parts.push({ type: "text", text: displayContent || content });
+          }
+          for (const img of images) {
+            parts.push({
+              type: "image",
+              source: {
+                type: "base64",
+                mediaType: img.mediaType,
+                data: img.data,
+              },
+            });
+          }
+          userMessageContent = parts;
+        } else {
+          userMessageContent = displayContent || content;
+        }
+
         // Add user message (use displayContent for showing, content for AI)
-        const userMessage: Message = { role: "user", content: displayContent || content };
+        const userMessage: Message = { role: "user", content: userMessageContent };
 
         if (!currentSessionId) {
           get().createSession();
@@ -518,13 +554,27 @@ export const useAIStore = create<AIState>()(
           // 从 store 获取最新的 messages，而不是使用闭包中的旧值
           const currentMessages = get().messages;
           
-          // 包装用户消息为 XML 格式（某些 API 代理需要结构化消息才能正常返回内容）
-          const llmMessages = [
+          // 包装用户消息（处理多模态内容）
+          const llmMessages: Message[] = [
             { role: "system" as const, content: systemMessage },
-            ...currentMessages.map(m => ({
-              role: m.role,
-              content: m.role === "user" ? `<message>\n${m.content}\n</message>` : m.content,
-            })),
+            ...currentMessages.map(m => {
+              if (m.role === "user") {
+                // 对于多模态内容，只包装文本部分
+                if (typeof m.content === 'string') {
+                  return { role: m.role, content: `<message>\n${m.content}\n</message>` };
+                } else {
+                  // 多模态内容：包装文本部分，保留图片
+                  const wrappedParts = m.content.map(part => {
+                    if (part.type === 'text') {
+                      return { type: 'text' as const, text: `<message>\n${part.text}\n</message>` };
+                    }
+                    return part;
+                  });
+                  return { role: m.role, content: wrappedParts };
+                }
+              }
+              return { role: m.role, content: m.content };
+            }),
           ];
 
           // 准备配置覆盖 (如果启用了路由且配置了聊天模型)
@@ -664,7 +714,9 @@ export const useAIStore = create<AIState>()(
         
         const actualIndex = messages.length - 1 - lastUserIndex;
         const lastUserMessage = messages[actualIndex];
-        const userContent = lastUserMessage.content;
+        
+        // 提取文本内容（重试时不包含图片）
+        const userContent = getTextFromContent(lastUserMessage.content);
         
         // 删除最后一条用户消息及之后的所有消息
         const newMessages = messages.slice(0, actualIndex);

@@ -7,7 +7,7 @@ import React, { useState, useRef, useEffect, useCallback, forwardRef, useImperat
 import { useFileStore } from "@/stores/useFileStore";
 import { useAIStore } from "@/stores/useAIStore";
 import { useLocaleStore } from "@/stores/useLocaleStore";
-import { Send, FileText, Folder, X, Loader2, Paperclip, Quote } from "lucide-react";
+import { Send, FileText, Folder, X, Loader2, Paperclip, Quote, Image as ImageIcon, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // 引用的文件
@@ -17,15 +17,24 @@ export interface ReferencedFile {
   isFolder: boolean;
 }
 
+// 附加的图片
+export interface AttachedImage {
+  id: string;
+  data: string; // base64
+  mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+  preview: string; // data URL for preview
+}
+
 export interface ChatInputRef {
   send: () => void;
   getReferencedFiles: () => ReferencedFile[];
+  getAttachedImages: () => AttachedImage[];
 }
 
 interface ChatInputProps {
   value: string;
   onChange: (value: string) => void;
-  onSend: (message: string, files: ReferencedFile[]) => void;
+  onSend: (message: string, files: ReferencedFile[], images?: AttachedImage[]) => void;
   isLoading?: boolean;
   isStreaming?: boolean;
   onStop?: () => void;
@@ -33,6 +42,7 @@ interface ChatInputProps {
   className?: string;
   rows?: number;
   hideSendButton?: boolean;
+  supportsVision?: boolean; // 当前模型是否支持图片
 }
 
 export const ChatInput = forwardRef<ChatInputRef, ChatInputProps>(({
@@ -46,6 +56,7 @@ export const ChatInput = forwardRef<ChatInputRef, ChatInputProps>(({
   className,
   rows = 2,
   hideSendButton = false,
+  supportsVision = true,
 }, ref) => {
   const { t } = useLocaleStore();
   const { fileTree } = useFileStore();
@@ -57,9 +68,72 @@ export const ChatInput = forwardRef<ChatInputRef, ChatInputProps>(({
   const [referencedFiles, setReferencedFiles] = useState<ReferencedFile[]>([]);
   const [showFilePicker, setShowFilePicker] = useState(false);
   const [filePickerQuery, setFilePickerQuery] = useState("");
+  const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mentionRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  // 处理图片粘贴
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) {
+          processImageFile(file);
+        }
+        break;
+      }
+    }
+  }, []);
+
+  // 处理图片文件
+  const processImageFile = useCallback((file: File) => {
+    if (!supportsVision) {
+      console.warn('当前模型不支持图片输入');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      const base64 = dataUrl.split(',')[1];
+      const mediaType = file.type as AttachedImage['mediaType'];
+      
+      const newImage: AttachedImage = {
+        id: `img_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        data: base64,
+        mediaType,
+        preview: dataUrl,
+      };
+      
+      setAttachedImages(prev => [...prev, newImage]);
+    };
+    reader.readAsDataURL(file);
+  }, [supportsVision]);
+
+  // 处理图片选择
+  const handleImageSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    for (const file of files) {
+      if (file.type.startsWith('image/')) {
+        processImageFile(file);
+      }
+    }
+    // 清空 input 以便重复选择同一文件
+    e.target.value = '';
+  }, [processImageFile]);
+
+  // 移除附加的图片
+  const removeImage = useCallback((id: string) => {
+    setAttachedImages(prev => prev.filter(img => img.id !== id));
+  }, []);
 
   // 扁平化文件树
   const flattenFileTree = useCallback((entries: any[], result: ReferencedFile[] = []): ReferencedFile[] => {
@@ -178,7 +252,7 @@ export const ChatInput = forwardRef<ChatInputRef, ChatInputProps>(({
 
   // 发送消息
   const handleSend = useCallback(() => {
-    if (!value.trim() && referencedFiles.length === 0 && textSelections.length === 0) return;
+    if (!value.trim() && referencedFiles.length === 0 && textSelections.length === 0 && attachedImages.length === 0) return;
     if (isLoading || isStreaming) return;
     
     // 构建带引用的消息
@@ -190,17 +264,19 @@ export const ChatInput = forwardRef<ChatInputRef, ChatInputProps>(({
       messageToSend = quotedTexts + (messageToSend ? `\n\n${messageToSend}` : '');
     }
     
-    onSend(messageToSend, referencedFiles);
+    onSend(messageToSend, referencedFiles, attachedImages.length > 0 ? attachedImages : undefined);
     onChange("");
     setReferencedFiles([]);
+    setAttachedImages([]);
     clearTextSelections();
-  }, [value, referencedFiles, textSelections, isLoading, isStreaming, onSend, onChange, clearTextSelections]);
+  }, [value, referencedFiles, textSelections, attachedImages, isLoading, isStreaming, onSend, onChange, clearTextSelections]);
 
   // 暴露方法给父组件
   useImperativeHandle(ref, () => ({
     send: handleSend,
     getReferencedFiles: () => referencedFiles,
-  }), [handleSend, referencedFiles]);
+    getAttachedImages: () => attachedImages,
+  }), [handleSend, referencedFiles, attachedImages]);
 
   // 点击外部关闭菜单
   useEffect(() => {
@@ -222,8 +298,8 @@ export const ChatInput = forwardRef<ChatInputRef, ChatInputProps>(({
     <div
       className={cn("relative", className)}
     >
-      {/* 已引用的文件和文本片段标签 */}
-      {(referencedFiles.length > 0 || textSelections.length > 0) && (
+      {/* 已引用的文件、文本片段和图片标签 */}
+      {(referencedFiles.length > 0 || textSelections.length > 0 || attachedImages.length > 0) && (
         <div className="flex flex-wrap gap-1 mb-2">
           {/* 文件引用 */}
           {referencedFiles.map(file => (
@@ -259,6 +335,25 @@ export const ChatInput = forwardRef<ChatInputRef, ChatInputProps>(({
               </button>
             </div>
           ))}
+          {/* 图片引用 */}
+          {attachedImages.map(img => (
+            <div
+              key={img.id}
+              className="relative group"
+            >
+              <img
+                src={img.preview}
+                alt="attached"
+                className="h-16 w-16 object-cover rounded-md border border-border"
+              />
+              <button
+                onClick={() => removeImage(img.id)}
+                className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X size={10} />
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
@@ -269,11 +364,42 @@ export const ChatInput = forwardRef<ChatInputRef, ChatInputProps>(({
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           placeholder={defaultPlaceholder}
           rows={rows}
           className="flex-1 resize-none bg-transparent outline-none text-sm"
         />
         
+        {/* 附加图片按钮 */}
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/gif,image/webp"
+          multiple
+          className="hidden"
+          onChange={handleImageSelect}
+        />
+        <button
+          onClick={() => imageInputRef.current?.click()}
+          className={cn(
+            "self-end p-2 rounded-lg transition-colors",
+            supportsVision
+              ? "text-muted-foreground hover:text-foreground hover:bg-muted"
+              : "text-muted-foreground/50 cursor-not-allowed"
+          )}
+          title={supportsVision ? (t.ai.attachImage || '添加图片') : (t.ai.modelNoVision || '当前模型不支持图片')}
+          disabled={!supportsVision}
+        >
+          {supportsVision ? (
+            <ImageIcon size={16} />
+          ) : (
+            <div className="relative">
+              <ImageIcon size={16} />
+              <AlertCircle size={8} className="absolute -bottom-0.5 -right-0.5 text-yellow-500" />
+            </div>
+          )}
+        </button>
+
         {/* 附加文件按钮 */}
         <div className="relative self-end" data-file-picker>
           <button
@@ -344,7 +470,7 @@ export const ChatInput = forwardRef<ChatInputRef, ChatInputProps>(({
           ) : (
             <button
               onClick={handleSend}
-              disabled={(!value.trim() && referencedFiles.length === 0) || isLoading}
+              disabled={(!value.trim() && referencedFiles.length === 0 && attachedImages.length === 0) || isLoading}
               className="self-end bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg p-2 transition-colors"
             >
               {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}

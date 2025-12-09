@@ -34,6 +34,18 @@ import {
 import { AgentMessageRenderer } from "../chat/AgentMessageRenderer";
 import type { ReferencedFile } from "@/hooks/useChatSend";
 import { AISettingsModal } from "../ai/AISettingsModal";
+import type { MessageContent, TextContent } from "@/services/llm";
+
+// 从消息内容中提取文本（处理多模态内容）
+function getTextFromContent(content: MessageContent): string {
+  if (typeof content === 'string') {
+    return content;
+  }
+  return content
+    .filter(item => item.type === 'text')
+    .map(item => (item as TextContent).text)
+    .join('\n');
+}
 
 // 随机黄豆 emoji 列表
 const WELCOME_EMOJIS = [
@@ -327,14 +339,15 @@ export function MainAIChatShell() {
 
     const files: string[] = [];
     for (const msg of messages) {
-      if (msg.role === "user" && msg.content.includes("<tool_result")) {
+      const content = getTextFromContent(msg.content);
+      if (msg.role === "user" && content.includes("<tool_result")) {
         // 匹配 create_note 的结果: "已创建文件: xxx.md" 或 "已覆盖文件: xxx.md"
-        const createMatch = msg.content.match(/<tool_result name="create_note">\s*已(?:创建|覆盖)文件: ([^\n<]+)/);
+        const createMatch = content.match(/<tool_result name="create_note">\s*已(?:创建|覆盖)文件: ([^\n<]+)/);
         if (createMatch) {
           files.push(createMatch[1].trim());
         }
         // 匹配 edit_note 的结果: "文件: xxx.md\n已生成 N 处修改"
-        const editMatch = msg.content.match(/<tool_result name="edit_note">\s*文件: ([^\n<]+)/);
+        const editMatch = content.match(/<tool_result name="edit_note">\s*文件: ([^\n<]+)/);
         if (editMatch) {
           files.push(editMatch[1].trim());
         }
@@ -532,11 +545,11 @@ export function MainAIChatShell() {
                             : "text-foreground"
                           }`}>
                           {isUser ? (
-                            <span className="text-sm">{msg.content}</span>
+                            <span className="text-sm">{getTextFromContent(msg.content)}</span>
                           ) : (
                             <div
                               className="prose prose-sm dark:prose-invert max-w-none leading-relaxed"
-                              dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.content) }}
+                              dangerouslySetInnerHTML={{ __html: parseMarkdown(getTextFromContent(msg.content)) }}
                             />
                           )}
                         </div>
@@ -1016,11 +1029,11 @@ export function MainAIChatShell() {
                       </span>
                       <span className="text-muted-foreground">#{idx}</span>
                       <span className="text-muted-foreground">
-                        {msg.content.length} chars
+                        {getTextFromContent(msg.content).length} chars
                       </span>
                     </div>
                     <pre className="whitespace-pre-wrap break-all text-foreground/90 max-h-[600px] overflow-auto">
-                      {msg.content}
+                      {getTextFromContent(msg.content)}
                     </pre>
                   </div>
                 ))}

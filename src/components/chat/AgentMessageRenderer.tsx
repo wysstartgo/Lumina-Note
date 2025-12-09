@@ -12,7 +12,19 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useLocaleStore } from '@/stores/useLocaleStore';
 import { parseMarkdown } from "@/lib/markdown";
 import { Message } from "@/agent/types";
+import type { MessageContent, TextContent } from "@/services/llm";
 import { useTimeout } from "@/hooks/useTimeout";
+
+// 从消息内容中提取文本（处理多模态内容）
+function getTextFromContent(content: MessageContent): string {
+  if (typeof content === 'string') {
+    return content;
+  }
+  return content
+    .filter(item => item.type === 'text')
+    .map(item => (item as TextContent).text)
+    .join('\n');
+}
 import {
   ChevronRight,
   ChevronDown,
@@ -211,7 +223,7 @@ function collectToolResults(messages: Message[]): Map<string, { result: string; 
   const toolResults = new Map<string, { result: string; success: boolean }>();
 
   messages.forEach(msg => {
-    const content = msg.content;
+    const content = getTextFromContent(msg.content);
 
     // 提取 tool_result：<tool_result name="xxx" params="...">结果</tool_result>
     // 或旧格式：<tool_result name="xxx">结果</tool_result>
@@ -509,14 +521,14 @@ export const AgentMessageRenderer = memo(function AgentMessageRenderer({
     // 找到所有用户消息的索引
     const userMessageIndices: number[] = [];
     messages.forEach((msg, idx) => {
-      if (msg.role === "user" && !shouldSkipUserMessage(msg.content)) {
+      if (msg.role === "user" && !shouldSkipUserMessage(getTextFromContent(msg.content))) {
         userMessageIndices.push(idx);
       }
     });
 
     userMessageIndices.forEach((userIdx, roundIndex) => {
       const userMsg = messages[userIdx];
-      const displayContent = cleanUserMessage(userMsg.content);
+      const displayContent = cleanUserMessage(getTextFromContent(userMsg.content));
 
       if (!displayContent) return;
 
@@ -530,7 +542,7 @@ export const AgentMessageRenderer = memo(function AgentMessageRenderer({
       let finalAnswer = "";
 
       assistantMessages.forEach(msg => {
-        const parsed = parseAssistantMessage(msg.content, toolResults);
+        const parsed = parseAssistantMessage(getTextFromContent(msg.content), toolResults);
         allThinkingBlocks.push(...parsed.thinkingBlocks);
         allToolCalls.push(...parsed.toolCalls);
         // 优先使用 attempt_completion_result 或 attempt_completion 中的 result

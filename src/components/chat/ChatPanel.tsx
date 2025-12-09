@@ -19,8 +19,44 @@ import {
   Square,
 } from "lucide-react";
 import { useSpeechToText } from "@/hooks/useSpeechToText";
-import { ChatInput, type ChatInputRef } from "./ChatInput";
+import { ChatInput, type ChatInputRef, type AttachedImage } from "./ChatInput";
 import { processMessageWithFiles, type ReferencedFile } from "@/hooks/useChatSend";
+import type { MessageContent, TextContent, ImageContent } from "@/services/llm";
+
+// 渲染消息内容（支持多模态）
+function renderMessageContent(content: MessageContent): React.ReactNode {
+  if (typeof content === 'string') {
+    return content;
+  }
+  // 多模态内容
+  return content.map((part, i) => {
+    if (part.type === 'text') {
+      return <span key={i}>{(part as TextContent).text}</span>;
+    } else if (part.type === 'image') {
+      const img = part as ImageContent;
+      return (
+        <img
+          key={i}
+          src={`data:${img.source.mediaType};base64,${img.source.data}`}
+          alt="attached"
+          className="max-w-[200px] max-h-[200px] rounded-lg mt-1"
+        />
+      );
+    }
+    return null;
+  });
+}
+
+// 从消息内容提取文本用于 Markdown 渲染
+function getTextFromContent(content: MessageContent): string {
+  if (typeof content === 'string') {
+    return content;
+  }
+  return content
+    .filter(part => part.type === 'text')
+    .map(part => (part as TextContent).text)
+    .join('\n');
+}
 
 // Edit suggestion card
 function EditCard({ 
@@ -136,15 +172,15 @@ export function ChatPanel({ compact = false }: ChatPanelProps) {
     };
   }, [currentFile, currentContent]);
 
-  // Handle send message with referenced files
-  const handleSendWithFiles = useCallback(async (message: string, files: ReferencedFile[]) => {
-    if (!message.trim() && files.length === 0) return;
+  // Handle send message with referenced files and images
+  const handleSendWithFiles = useCallback(async (message: string, files: ReferencedFile[], images?: AttachedImage[]) => {
+    if (!message.trim() && files.length === 0 && (!images || images.length === 0)) return;
     if (isLoading || isStreaming) return;
 
     const { displayMessage, fullMessage } = await processMessageWithFiles(message, files);
 
     setInputValue("");
-    await sendMessageStream(fullMessage, files.length === 0 ? (currentFileInfo || undefined) : undefined, displayMessage);
+    await sendMessageStream(fullMessage, files.length === 0 ? (currentFileInfo || undefined) : undefined, displayMessage, images);
   }, [isLoading, isStreaming, sendMessageStream, currentFileInfo]);
 
   // Preview edit in diff view
@@ -234,12 +270,12 @@ export function ChatPanel({ compact = false }: ChatPanelProps) {
           <div key={idx} className={`${msg.role === "user" ? "flex justify-end" : ""}`}>
             {msg.role === "user" ? (
               <div className="max-w-[85%] bg-primary text-primary-foreground rounded-2xl rounded-br-sm px-4 py-2.5 text-sm">
-                {msg.content}
+                {renderMessageContent(msg.content)}
               </div>
             ) : (
               <div 
                 className="text-foreground leading-relaxed prose prose-sm dark:prose-invert max-w-none [&_*]:!text-xs [&_h1]:!text-base [&_h2]:!text-sm [&_h3]:!text-xs"
-                dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.content) }}
+                dangerouslySetInnerHTML={{ __html: parseMarkdown(getTextFromContent(msg.content)) }}
               />
             )}
           </div>

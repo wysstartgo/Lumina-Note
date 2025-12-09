@@ -135,6 +135,9 @@ export default {
     notTriggered: '未觸發',
     noIntentData: '暫無意圖數據',
     noMsgs: '暫無訊息，傳送一條訊息開始除錯',
+    attachImage: '新增圖片',
+    modelNoVision: '目前模型不支援圖片',
+    imageAttached: '已新增 {count} 張圖片',
   },
   
   // 設定

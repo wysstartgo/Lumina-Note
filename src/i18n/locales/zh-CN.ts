@@ -135,6 +135,9 @@ export default {
     notTriggered: '未触发',
     noIntentData: '暂无意图数据',
     noMsgs: '暂无消息，发送一条消息开始调试',
+    attachImage: '添加图片',
+    modelNoVision: '当前模型不支持图片',
+    imageAttached: '已添加 {count} 张图片',
   },
   
   // 设置

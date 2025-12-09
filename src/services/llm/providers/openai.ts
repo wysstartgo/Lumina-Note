@@ -1,9 +1,33 @@
 /**
  * OpenAI Provider
  * 兼容所有 OpenAI API 格式的服务
+ * 支持多模态输入（图片）
  */
 
-import type { Message, LLMConfig, LLMOptions, LLMResponse, LLMProvider } from "../types";
+import type { Message, MessageContent, LLMConfig, LLMOptions, LLMResponse, LLMProvider } from "../types";
+
+// 转换消息内容为 OpenAI 格式
+function convertContent(content: MessageContent): string | Array<{ type: string; text?: string; image_url?: { url: string } }> {
+  // 纯文本直接返回
+  if (typeof content === 'string') {
+    return content;
+  }
+  
+  // 多模态内容转换
+  return content.map(item => {
+    if (item.type === 'text') {
+      return { type: 'text', text: item.text };
+    } else if (item.type === 'image') {
+      return {
+        type: 'image_url',
+        image_url: {
+          url: `data:${item.source.mediaType};base64,${item.source.data}`
+        }
+      };
+    }
+    return { type: 'text', text: '' };
+  });
+}
 
 export class OpenAIProvider implements LLMProvider {
   private config: LLMConfig;
@@ -20,7 +44,7 @@ export class OpenAIProvider implements LLMProvider {
       model: this.config.model,
       messages: messages.map((m) => ({
         role: m.role,
-        content: m.content,
+        content: convertContent(m.content),
       })),
       temperature: options?.temperature ?? 0.7,
       max_tokens: options?.maxTokens || 4096,

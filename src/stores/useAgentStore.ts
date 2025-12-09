@@ -15,7 +15,18 @@ import {
 import { getAgentLoop, resetAgentLoop } from "@/agent/core/AgentLoop";
 import { MODES } from "@/agent/modes";
 import { getAIConfig } from "@/lib/ai";
-import { intentRouter, Intent, queryRewriter } from "@/services/llm";
+import { intentRouter, Intent, queryRewriter, type MessageContent, type TextContent } from "@/services/llm";
+
+// 从消息内容中提取文本（处理多模态内容）
+function getTextFromContent(content: MessageContent): string {
+  if (typeof content === 'string') {
+    return content;
+  }
+  return content
+    .filter(item => item.type === 'text')
+    .map(item => (item as TextContent).text)
+    .join('\n');
+}
 
 interface AgentSession {
   id: string;
@@ -34,7 +45,7 @@ interface AgentSession {
 function generateAgentSessionTitleFromMessages(messages: Message[], fallback: string = "新对话"): string {
   const firstUser = messages.find((m) => m.role === "user");
   if (!firstUser || !firstUser.content) return fallback;
-  const raw = firstUser.content.replace(/\s+/g, " ").trim();
+  const raw = getTextFromContent(firstUser.content).replace(/\s+/g, " ").trim();
   if (!raw) return fallback;
   const maxLen = 20;
   return raw.length > maxLen ? `${raw.slice(0, maxLen)}...` : raw;
@@ -43,7 +54,7 @@ function generateAgentSessionTitleFromMessages(messages: Message[], fallback: st
 function generateAgentTitleFromAssistant(messages: Message[], fallback: string = "新对话"): string {
   const firstAssistant = messages.find((m) => m.role === "assistant");
   if (!firstAssistant || !firstAssistant.content) return fallback;
-  const cleaned = firstAssistant.content
+  const cleaned = getTextFromContent(firstAssistant.content)
     .replace(/```[\s\S]*?```/g, "")
     .replace(/<thinking>[\s\S]*?<\/thinking>/g, "")
     .replace(/[#>*\-]+/g, " ")
@@ -558,7 +569,7 @@ export const useAgentStore = create<AgentState>()(
           const lastUserMessage = messages[actualIndex];
 
           // 提取用户消息内容（从 <task> 标签中提取）
-          let userContent = lastUserMessage.content;
+          let userContent = getTextFromContent(lastUserMessage.content);
           const taskMatch = userContent.match(/<task>([\s\S]*?)<\/task>/);
           if (taskMatch) {
             userContent = taskMatch[1].trim();

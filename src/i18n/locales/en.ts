@@ -135,6 +135,9 @@ export default {
     notTriggered: 'Not triggered',
     noIntentData: 'No intent data',
     noMsgs: 'No messages, send a message to start debugging',
+    attachImage: 'Add image',
+    modelNoVision: 'Current model does not support images',
+    imageAttached: '{count} image(s) attached',
   },
   
   // Settings

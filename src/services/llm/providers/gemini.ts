@@ -1,9 +1,13 @@
 /**
  * Google Gemini Provider
  * 支持 Gemini 2.5 Flash/Pro 等模型
+ * 支持多模态输入（图片）
  */
 
-import type { Message, LLMConfig, LLMOptions, LLMResponse, LLMProvider } from "../types";
+import type { Message, MessageContent, LLMConfig, LLMOptions, LLMResponse, LLMProvider } from "../types";
+
+// Gemini 消息部分的类型
+type GeminiPart = { text: string } | { inline_data: { mime_type: string; data: string } };
 
 export class GeminiProvider implements LLMProvider {
   private config: LLMConfig;
@@ -58,13 +62,36 @@ export class GeminiProvider implements LLMProvider {
   }
 
   /**
+   * 转换消息内容为 Gemini parts 格式
+   */
+  private convertContent(content: MessageContent): GeminiPart[] {
+    if (typeof content === 'string') {
+      return [{ text: content }];
+    }
+    
+    return content.map(item => {
+      if (item.type === 'text') {
+        return { text: item.text };
+      } else if (item.type === 'image') {
+        return {
+          inline_data: {
+            mime_type: item.source.mediaType,
+            data: item.source.data
+          }
+        };
+      }
+      return { text: '' };
+    });
+  }
+
+  /**
    * 将标准消息格式转换为 Gemini 格式
    */
   private convertMessages(messages: Message[]): Array<{
     role: string;
-    parts: Array<{ text: string }>;
+    parts: GeminiPart[];
   }> {
-    const contents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+    const contents: Array<{ role: string; parts: GeminiPart[] }> = [];
     
     for (const msg of messages) {
       // Gemini 只支持 "user" 和 "model" 角色
@@ -73,21 +100,19 @@ export class GeminiProvider implements LLMProvider {
         role = "model";
       } else if (msg.role === "system") {
         // 系统消息作为用户消息的前缀处理
-        // 或者可以使用 systemInstruction（在请求体顶层）
         role = "user";
       } else {
         role = "user";
       }
 
+      const parts = this.convertContent(msg.content);
+
       // 合并连续的相同角色消息
       const lastContent = contents[contents.length - 1];
       if (lastContent && lastContent.role === role) {
-        lastContent.parts.push({ text: msg.content });
+        lastContent.parts.push(...parts);
       } else {
-        contents.push({
-          role,
-          parts: [{ text: msg.content }],
-        });
+        contents.push({ role, parts });
       }
     }
 
