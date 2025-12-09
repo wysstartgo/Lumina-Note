@@ -15,7 +15,7 @@ Build your second brain with a Markdown note app deeply integrated with AI Agent
 
 **Language**: [简体中文](./README.md) · English · [日本語](./README.ja.md)
 
-> 🚀 **This entire project was built by 2 person in 10 days with AI-assisted development, containing 47,000+ lines of source code**
+> 🚀 **This entire project was built by 2 people in 2 weeks with AI-assisted development, containing 44,000+ lines of source code**
 
 [Quick Start](#-getting-started) • [Features](#-core-features) • [Usage Guide](#-usage-guide) • [Architecture](#️-architecture-high-level)
 
@@ -321,6 +321,13 @@ See the Chinese README or `docs/` for more implementation details. In short:
 - [x] **Database**: Dataview-style YAML-driven table/kanban views
 - [x] **Image Paste**: Paste screenshots directly into editor, auto-save to vault
 - [x] **Drag-and-drop WikiLinks**: Drag files from tree to editor to insert `[[WikiLink]]`
+- [x] **WebDAV Sync**: Support Jianguoyun and other WebDAV services for bi-directional vault sync
+- [x] **Flashcard System**: Generate flashcards from notes, spaced repetition review (basic/cloze/MCQ)
+- [x] **Multi-language**: Chinese/English/Traditional Chinese/Japanese internationalization
+- [x] **Dynamic Routing**: Intent recognition + multi-model routing for smart task distribution
+- [x] **Backlinks Panel**: Show which notes reference the current note, click to navigate
+- [x] **Tag Aggregation**: Tag list with counts, expand to see related notes
+- [x] **Export PDF**: One-click export notes to PDF files
 
 ### 🚧 In Progress
 
@@ -329,12 +336,10 @@ See the Chinese README or `docs/` for more implementation details. In short:
 
 ### 📋 Planned
 
-- [ ] **Backlinks Panel**: Show which notes reference the current note
-- [ ] **Tag Aggregation**: Click tags to navigate, tag management page
 - [ ] **Template System**: Choose templates when creating new notes
-- [ ] **Export**: Export to PDF / HTML / Word
+- [ ] **Export HTML/Word**: More export formats
 - [ ] **Plugin System**: Plugin API design
-- [ ] **Sync**: WebDAV / Git sync support
+- [ ] **Git Sync**: Git version control integration
 - [ ] **Mobile**: iOS / Android adaptation
 
 ---
