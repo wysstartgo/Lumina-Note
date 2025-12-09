@@ -271,6 +271,8 @@ export default {
     close: '关闭',
     closeOthers: '关闭其他',
     closeAll: '关闭全部',
+    pin: '固定标签页',
+    unpin: '取消固定',
   },
 
   // 对话列表

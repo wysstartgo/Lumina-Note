@@ -40,6 +40,7 @@ export interface Tab {
   name: string;
   content: string;
   isDirty: boolean;
+  isPinned?: boolean; // 是否固定
   undoStack: HistoryEntry[];
   redoStack: HistoryEntry[];
   isolatedNode?: IsolatedNodeInfo; // 孤立视图的目标节点
@@ -96,6 +97,7 @@ interface FileState {
   closeOtherTabs: (index: number) => Promise<void>;
   closeAllTabs: () => Promise<void>;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
+  togglePinTab: (index: number) => void;
   updateTabPath: (oldPath: string, newPath: string) => void;
   
   // Create new file
@@ -355,6 +357,9 @@ export const useFileStore = create<FileState>()(
     
     const tabToClose = tabs[index];
     
+    // 固定标签不能关闭
+    if (tabToClose.isPinned) return;
+    
     // 如果要关闭的是当前标签页且有未保存的更改，先保存
     if (index === activeTabIndex && isDirty) {
       await get().save();
@@ -427,22 +432,27 @@ export const useFileStore = create<FileState>()(
     }
   },
 
-  // 关闭其他标签页
+  // 关闭其他标签页（保留固定标签）
   closeOtherTabs: async (index: number) => {
     const { tabs } = get();
     if (index < 0 || index >= tabs.length) return;
     
-    // 保存所有标签页
+    const targetTab = tabs[index];
+    
+    // 保存所有要关闭的标签页
     for (const tab of tabs) {
-      if (tab.isDirty) {
+      if (tab.isDirty && tab.id !== targetTab.id && !tab.isPinned) {
         await saveFile(tab.path, tab.content);
       }
     }
     
-    const targetTab = tabs[index];
+    // 保留固定标签和当前标签
+    const remainingTabs = tabs.filter(tab => tab.isPinned || tab.id === targetTab.id);
+    const newActiveIndex = remainingTabs.findIndex(t => t.id === targetTab.id);
+    
     set({
-      tabs: [targetTab],
-      activeTabIndex: 0,
+      tabs: remainingTabs,
+      activeTabIndex: newActiveIndex >= 0 ? newActiveIndex : 0,
       currentFile: targetTab.path,
       currentContent: targetTab.content,
       isDirty: false,
@@ -451,26 +461,43 @@ export const useFileStore = create<FileState>()(
     });
   },
 
-  // 关闭所有标签页
+  // 关闭所有标签页（保留固定标签）
   closeAllTabs: async () => {
     const { tabs } = get();
     
-    // 保存所有标签页
+    // 保存所有要关闭的标签页
     for (const tab of tabs) {
-      if (tab.isDirty) {
+      if (tab.isDirty && !tab.isPinned) {
         await saveFile(tab.path, tab.content);
       }
     }
     
-    set({
-      tabs: [],
-      activeTabIndex: -1,
-      currentFile: null,
-      currentContent: "",
-      isDirty: false,
-      undoStack: [],
-      redoStack: [],
-    });
+    // 保留固定标签
+    const pinnedTabs = tabs.filter(tab => tab.isPinned);
+    
+    if (pinnedTabs.length === 0) {
+      set({
+        tabs: [],
+        activeTabIndex: -1,
+        currentFile: null,
+        currentContent: "",
+        isDirty: false,
+        undoStack: [],
+        redoStack: [],
+      });
+    } else {
+      // 切换到第一个固定标签
+      const firstPinned = pinnedTabs[0];
+      set({
+        tabs: pinnedTabs,
+        activeTabIndex: 0,
+        currentFile: firstPinned.path,
+        currentContent: firstPinned.content,
+        isDirty: firstPinned.isDirty,
+        undoStack: firstPinned.undoStack,
+        redoStack: firstPinned.redoStack,
+      });
+    }
   },
 
   // 更新标签页路径（用于文件重命名）
@@ -507,8 +534,20 @@ export const useFileStore = create<FileState>()(
     if (fromIndex < 0 || fromIndex >= tabs.length) return;
     if (toIndex < 0 || toIndex >= tabs.length) return;
     
+    const movedTab = tabs[fromIndex];
+    const pinnedCount = tabs.filter(t => t.isPinned).length;
+    
+    // 固定标签只能在固定区域内移动，非固定标签不能移到固定区域
+    if (movedTab.isPinned) {
+      // 固定标签不能移到非固定区域
+      if (toIndex >= pinnedCount) return;
+    } else {
+      // 非固定标签不能移到固定区域
+      if (toIndex < pinnedCount) return;
+    }
+    
     const newTabs = [...tabs];
-    const [movedTab] = newTabs.splice(fromIndex, 1);
+    newTabs.splice(fromIndex, 1);
     newTabs.splice(toIndex, 0, movedTab);
     
     // 更新活动标签页索引
@@ -522,6 +561,33 @@ export const useFileStore = create<FileState>()(
     }
     
     set({ tabs: newTabs, activeTabIndex: newActiveIndex });
+  },
+
+  // 固定/取消固定标签页
+  togglePinTab: (index: number) => {
+    const { tabs, activeTabIndex } = get();
+    if (index < 0 || index >= tabs.length) return;
+    
+    const tab = tabs[index];
+    const newIsPinned = !tab.isPinned;
+    const newTabs = [...tabs];
+    
+    // 更新固定状态
+    newTabs[index] = { ...tab, isPinned: newIsPinned };
+    
+    // 重新排序：固定的标签移到最前面
+    const pinnedTabs = newTabs.filter(t => t.isPinned);
+    const unpinnedTabs = newTabs.filter(t => !t.isPinned);
+    const sortedTabs = [...pinnedTabs, ...unpinnedTabs];
+    
+    // 找到当前活动标签在新数组中的位置
+    const activeTabId = tabs[activeTabIndex]?.id;
+    const newActiveIndex = sortedTabs.findIndex(t => t.id === activeTabId);
+    
+    set({ 
+      tabs: sortedTabs, 
+      activeTabIndex: newActiveIndex >= 0 ? newActiveIndex : 0 
+    });
   },
 
   // 打开图谱标签页

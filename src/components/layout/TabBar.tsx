@@ -1,7 +1,7 @@
 import { useCallback, useState, useRef, useEffect } from "react";
 import { useFileStore, Tab } from "@/stores/useFileStore";
 import { useLocaleStore } from "@/stores/useLocaleStore";
-import { X, FileText, Network, Video, Database, Globe, Brain } from "lucide-react";
+import { X, FileText, Network, Video, Database, Globe, Brain, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface TabItemProps {
@@ -62,19 +62,24 @@ function TabItem({
         <FileText size={12} className="shrink-0 opacity-60" />
       )}
       <span className="truncate max-w-[120px]">{tab.name}</span>
+      {tab.isPinned && (
+        <Pin size={10} className="shrink-0 text-primary rotate-45" />
+      )}
       {tab.isDirty && (
         <span className="w-1.5 h-1.5 rounded-full bg-orange-400 shrink-0" />
       )}
-      <button
-        onClick={onClose}
-        className={cn(
-          "shrink-0 p-0.5 rounded hover:bg-accent",
-          "opacity-0 group-hover:opacity-100 transition-opacity",
-          isActive && "opacity-60"
-        )}
-      >
-        <X size={12} />
-      </button>
+      {!tab.isPinned && (
+        <button
+          onClick={onClose}
+          className={cn(
+            "shrink-0 p-0.5 rounded hover:bg-accent",
+            "opacity-0 group-hover:opacity-100 transition-opacity",
+            isActive && "opacity-60"
+          )}
+        >
+          <X size={12} />
+        </button>
+      )}
       {/* Active indicator */}
       {isActive && (
         <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
@@ -91,7 +96,7 @@ interface ContextMenuState {
 
 export function TabBar() {
   const { t } = useLocaleStore();
-  const { tabs, activeTabIndex, switchTab, closeTab, closeOtherTabs, closeAllTabs, reorderTabs } =
+  const { tabs, activeTabIndex, switchTab, closeTab, closeOtherTabs, closeAllTabs, reorderTabs, togglePinTab } =
     useFileStore();
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -252,10 +257,22 @@ export function TabBar() {
           >
             <button
               onClick={() => {
+                togglePinTab(contextMenu.tabIndex);
+                setContextMenu(null);
+              }}
+              className="w-full px-3 py-1.5 text-sm text-left hover:bg-accent transition-colors flex items-center gap-2"
+            >
+              <Pin size={12} className={tabs[contextMenu.tabIndex]?.isPinned ? "" : "rotate-45"} />
+              {tabs[contextMenu.tabIndex]?.isPinned ? t.tabBar.unpin : t.tabBar.pin}
+            </button>
+            <div className="h-px bg-border my-1" />
+            <button
+              onClick={() => {
                 closeTab(contextMenu.tabIndex);
                 setContextMenu(null);
               }}
-              className="w-full px-3 py-1.5 text-sm text-left hover:bg-accent transition-colors"
+              className="w-full px-3 py-1.5 text-sm text-left hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={tabs[contextMenu.tabIndex]?.isPinned}
             >
               {t.tabBar.close}
             </button>

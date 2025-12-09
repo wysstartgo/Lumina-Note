@@ -271,6 +271,8 @@ export default {
     close: 'Close',
     closeOthers: 'Close Others',
     closeAll: 'Close All',
+    pin: 'Pin Tab',
+    unpin: 'Unpin Tab',
   },
 
   // Conversation List
