@@ -6,6 +6,7 @@
 import { ToolExecutor, ToolResult, ToolContext } from "../../types";
 import { useDatabaseStore } from "@/stores/useDatabaseStore";
 import type { CellValue } from "@/types/database";
+import { toolMsg } from "./messages";
 
 export const AddDatabaseRowTool: ToolExecutor = {
   name: "add_database_row",
@@ -22,7 +23,7 @@ export const AddDatabaseRowTool: ToolExecutor = {
       return {
         success: false,
         content: "",
-        error: "参数错误: database_id 必须是非空字符串",
+        error: `${toolMsg.invalidParams()}: database_id required`,
       };
     }
 
@@ -40,7 +41,7 @@ export const AddDatabaseRowTool: ToolExecutor = {
           return {
             success: false,
             content: "",
-            error: `数据库不存在: ${dbId}\n\n可用数据库: ${allDbIds.join(", ") || "无"}`,
+            error: `Database not found: ${dbId}\n\nAvailable: ${allDbIds.join(", ") || "none"}`,
           };
         }
         db = loaded;
@@ -50,7 +51,7 @@ export const AddDatabaseRowTool: ToolExecutor = {
         return {
           success: false,
           content: "",
-          error: `数据库不存在: ${dbId}\n\n可用数据库: ${allDbIds.join(", ") || "无"}`,
+          error: `Database not found: ${dbId}\n\nAvailable: ${allDbIds.join(", ") || "none"}`,
         };
       }
 
@@ -64,7 +65,7 @@ export const AddDatabaseRowTool: ToolExecutor = {
             return {
               success: false,
               content: "",
-              error: "参数错误: cells 必须是有效的 JSON 对象",
+              error: `${toolMsg.invalidParams()}: cells must be valid JSON`,
             };
           }
         } else {
@@ -97,7 +98,7 @@ export const AddDatabaseRowTool: ToolExecutor = {
             cellsById[column.id] = value as CellValue;
           }
         } else {
-          console.warn(`未知列: ${key}`);
+          console.warn(`Unknown column: ${key}`);
         }
       }
 
@@ -120,19 +121,19 @@ export const AddDatabaseRowTool: ToolExecutor = {
 
       return {
         success: true,
-        content: `已向数据库 "${db.name}" 添加新行。
+        content: `${toolMsg.database.rowAdded()} to "${db.name}".
         
-**行 ID**: ${rowId}
-**笔记路径**: ${newRow?.notePath || "未知"}
-**设置的值**: ${addedValues || "无"}
+**Row ID**: ${rowId}
+**Note path**: ${newRow?.notePath || "unknown"}
+**Values set**: ${addedValues || "none"}
 
-**可用列**: ${columnsInfo}`,
+**Available columns**: ${columnsInfo}`,
       };
     } catch (error) {
       return {
         success: false,
         content: "",
-        error: `添加数据库行失败: ${error instanceof Error ? error.message : "未知错误"}`,
+        error: `${toolMsg.failed()}: ${error instanceof Error ? error.message : "unknown error"}`,
       };
     }
   },

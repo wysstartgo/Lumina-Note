@@ -6,6 +6,7 @@
 import { ToolExecutor, ToolResult, ToolContext } from "../../types";
 import { useRAGStore } from "@/stores/useRAGStore";
 import type { SearchResult } from "@/services/rag";
+import { toolMsg } from "./messages";
 
 export const SearchNotesTool: ToolExecutor = {
   name: "search_notes",
@@ -23,7 +24,7 @@ export const SearchNotesTool: ToolExecutor = {
       return {
         success: false,
         content: "",
-        error: "参数错误: query 必须是非空字符串",
+        error: `${toolMsg.invalidParams()}: query required`,
       };
     }
 
@@ -35,7 +36,7 @@ export const SearchNotesTool: ToolExecutor = {
         return {
           success: false,
           content: "",
-          error: "RAG 系统未初始化。请先在设置中配置 embedding API 并建立索引。",
+          error: "RAG system not initialized. Please configure embedding API in settings.",
         };
       }
 
@@ -48,7 +49,7 @@ export const SearchNotesTool: ToolExecutor = {
       if (results.length === 0) {
         return {
           success: true,
-          content: `未找到与 "${query}" 相关的笔记。`,
+          content: toolMsg.search.noResults(),
         };
       }
 
@@ -59,9 +60,9 @@ export const SearchNotesTool: ToolExecutor = {
           ? r.content.substring(0, 300) + "..." 
           : r.content;
         
-        return `### ${i + 1}. ${r.filePath} (相关度: ${score}%)
-**章节**: ${r.heading}
-**位置**: 第 ${r.startLine}-${r.endLine} 行
+        return `### ${i + 1}. ${r.filePath} (relevance: ${score}%)
+**Section**: ${r.heading}
+**Location**: line ${r.startLine}-${r.endLine}
 
 \`\`\`
 ${preview}
@@ -70,13 +71,13 @@ ${preview}
 
       return {
         success: true,
-        content: `找到 ${results.length} 个相关结果:\n\n${formattedResults}`,
+        content: `${toolMsg.search.found(results.length)}\n\n${formattedResults}`,
       };
     } catch (error) {
       return {
         success: false,
         content: "",
-        error: `搜索失败: ${error instanceof Error ? error.message : "未知错误"}`,
+        error: `${toolMsg.failed()}: ${error instanceof Error ? error.message : "unknown error"}`,
       };
     }
   },

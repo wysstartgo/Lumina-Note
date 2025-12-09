@@ -7,6 +7,7 @@ import { ToolExecutor, ToolResult, ToolContext } from "../../types";
 import { deleteFile, exists } from "@/lib/tauri";
 import { useFileStore } from "@/stores/useFileStore";
 import { resolve } from "@/lib/path";
+import { toolMsg } from "./messages";
 
 export const DeleteNoteTool: ToolExecutor = {
   name: "delete_note",
@@ -22,7 +23,7 @@ export const DeleteNoteTool: ToolExecutor = {
       return {
         success: false,
         content: "",
-        error: "参数错误: path 必须是非空字符串",
+        error: toolMsg.pathRequired(),
       };
     }
 
@@ -36,7 +37,7 @@ export const DeleteNoteTool: ToolExecutor = {
         return {
           success: false,
           content: "",
-          error: `文件不存在: ${path}`,
+          error: toolMsg.fileNotFound(path),
         };
       }
 
@@ -57,13 +58,13 @@ export const DeleteNoteTool: ToolExecutor = {
 
       return {
         success: true,
-        content: `已删除笔记: ${path}`,
+        content: toolMsg.deleteNote.success(path),
       };
     } catch (error) {
       return {
         success: false,
         content: "",
-        error: `删除失败: ${error instanceof Error ? error.message : "未知错误"}`,
+        error: `${toolMsg.failed()}: ${error instanceof Error ? error.message : "unknown error"}`,
       };
     }
   },

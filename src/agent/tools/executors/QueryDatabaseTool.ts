@@ -6,6 +6,7 @@
 import { ToolExecutor, ToolResult, ToolContext } from "../../types";
 import { useDatabaseStore } from "@/stores/useDatabaseStore";
 import type { DatabaseColumn, CellValue } from "@/types/database";
+import { toolMsg } from "./messages";
 
 // 格式化单元格值为字符串
 function formatCellValue(value: CellValue, column: DatabaseColumn): string {
@@ -54,7 +55,7 @@ export const QueryDatabaseTool: ToolExecutor = {
       return {
         success: false,
         content: "",
-        error: "参数错误: database_id 必须是非空字符串",
+        error: `${toolMsg.invalidParams()}: database_id required`,
       };
     }
 
@@ -72,7 +73,7 @@ export const QueryDatabaseTool: ToolExecutor = {
           return {
             success: false,
             content: "",
-            error: `数据库不存在: ${dbId}\n\n可用数据库: ${allDbIds.join(", ") || "无"}`,
+            error: `Database not found: ${dbId}\n\nAvailable: ${allDbIds.join(", ") || "none"}`,
           };
         }
         db = loaded;
@@ -82,7 +83,7 @@ export const QueryDatabaseTool: ToolExecutor = {
         return {
           success: false,
           content: "",
-          error: `数据库不存在: ${dbId}\n\n可用数据库: ${allDbIds.join(", ") || "无"}`,
+          error: `Database not found: ${dbId}\n\nAvailable: ${allDbIds.join(", ") || "none"}`,
         };
       }
 
@@ -113,7 +114,7 @@ export const QueryDatabaseTool: ToolExecutor = {
         if (col.type === 'select' || col.type === 'multi-select') {
           const optionNames = col.options?.map(o => o.name) || [];
           if (optionNames.length > 0) {
-            desc += `: 可选值 [${optionNames.join(', ')}]`;
+            desc += `: options [${optionNames.join(', ')}]`;
           }
         }
         return desc;
@@ -122,7 +123,7 @@ export const QueryDatabaseTool: ToolExecutor = {
       if (displayRows.length === 0) {
         return {
           success: true,
-          content: `数据库: **${db.name}** (ID: ${dbId})\n\n## 列结构\n${columnSchema}\n\n暂无数据行。`,
+          content: `Database: **${db.name}** (ID: ${dbId})\n\n## Columns\n${columnSchema}\n\nNo data rows.`,
         };
       }
 
@@ -143,18 +144,18 @@ export const QueryDatabaseTool: ToolExecutor = {
 
       const truncatedNote =
         rows.length > limit
-          ? `\n\n(显示前 ${limit} 行，共 ${rows.length} 行)`
+          ? `\n\n(Showing ${limit} of ${rows.length} rows)`
           : "";
 
       return {
         success: true,
-        content: `数据库: **${db.name}** (ID: ${dbId})\n\n## 列结构\n${columnSchema}\n\n## 数据\n${table}${truncatedNote}`,
+        content: `Database: **${db.name}** (ID: ${dbId})\n\n## Columns\n${columnSchema}\n\n## Data\n${table}${truncatedNote}`,
       };
     } catch (error) {
       return {
         success: false,
         content: "",
-        error: `查询数据库失败: ${error instanceof Error ? error.message : "未知错误"}`,
+        error: `${toolMsg.failed()}: ${error instanceof Error ? error.message : "unknown error"}`,
       };
     }
   },

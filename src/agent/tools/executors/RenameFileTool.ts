@@ -6,6 +6,7 @@ import { ToolExecutor, ToolResult, ToolContext } from "../../types";
 import { exists, rename } from "@/lib/tauri";
 import { join, dirname, resolve } from "@/lib/path";
 import { useFileStore } from "@/stores/useFileStore";
+import { toolMsg } from "./messages";
 
 export const RenameFileTool: ToolExecutor = {
   name: "rename_file",
@@ -22,12 +23,12 @@ export const RenameFileTool: ToolExecutor = {
       return {
         success: false,
         content: "",
-        error: `参数错误: 缺少 path 或 new_name 参数。
+        error: `${toolMsg.invalidParams()}: path and new_name required
 
-正确用法:
+Usage:
 <rename_file>
-<path>路径/旧文件名.ext</path>
-<new_name>新文件名.ext</new_name>
+<path>path/old-name.ext</path>
+<new_name>new-name.ext</new_name>
 </rename_file>`,
       };
     }
@@ -36,7 +37,7 @@ export const RenameFileTool: ToolExecutor = {
       return {
         success: false,
         content: "",
-        error: `参数错误: new_name 不能包含路径分隔符。如果要移动文件，请使用 move_file。`,
+        error: toolMsg.editNote.newNameInvalid(),
       };
     }
 
@@ -50,7 +51,7 @@ export const RenameFileTool: ToolExecutor = {
         return {
           success: false,
           content: "",
-          error: `文件不存在: ${path}`,
+          error: toolMsg.fileNotFound(path),
         };
       }
 
@@ -59,7 +60,7 @@ export const RenameFileTool: ToolExecutor = {
         return {
           success: false,
           content: "",
-          error: `目标文件名已存在: ${newName}`,
+          error: toolMsg.renameFile.targetExists(),
         };
       }
 
@@ -80,13 +81,13 @@ export const RenameFileTool: ToolExecutor = {
 
       return {
         success: true,
-        content: `已重命名: ${path} -> ${newName}`,
+        content: toolMsg.renameFile.success(path, newName),
       };
     } catch (error) {
       return {
         success: false,
         content: "",
-        error: `重命名失败: ${error instanceof Error ? error.message : "未知错误"}`,
+        error: `${toolMsg.failed()}: ${error instanceof Error ? error.message : "unknown error"}`,
       };
     }
   },

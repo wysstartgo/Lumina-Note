@@ -6,6 +6,7 @@ import { ToolExecutor, ToolResult, ToolContext } from "../../types";
 import { exists, rename, createDir } from "@/lib/tauri";
 import { dirname, resolve } from "@/lib/path";
 import { useFileStore } from "@/stores/useFileStore";
+import { toolMsg } from "./messages";
 
 export const MoveFileTool: ToolExecutor = {
   name: "move_file",
@@ -22,15 +23,13 @@ export const MoveFileTool: ToolExecutor = {
       return {
         success: false,
         content: "",
-        error: `参数错误: 缺少 ${!from ? "from" : "to"} 参数。
+        error: `${toolMsg.invalidParams()}: ${!from ? "from" : "to"} required
 
-正确用法:
+Usage:
 <move_file>
-<from>原路径/文件.ext</from>
-<to>新路径/文件.ext</to>
-</move_file>
-
-提示: 也可用于重命名文件（在同一目录内移动）。`,
+<from>source/file.ext</from>
+<to>target/file.ext</to>
+</move_file>`,
       };
     }
 
@@ -43,7 +42,7 @@ export const MoveFileTool: ToolExecutor = {
         return {
           success: false,
           content: "",
-          error: `源文件不存在: ${from}`,
+          error: toolMsg.fileNotFound(from),
         };
       }
 
@@ -52,7 +51,7 @@ export const MoveFileTool: ToolExecutor = {
         return {
           success: false,
           content: "",
-          error: `目标文件已存在: ${to}`,
+          error: toolMsg.moveFile.targetExists(),
         };
       }
 
@@ -72,13 +71,13 @@ export const MoveFileTool: ToolExecutor = {
 
       return {
         success: true,
-        content: `已移动: ${from} -> ${to}`,
+        content: toolMsg.moveFile.success(from, to),
       };
     } catch (error) {
       return {
         success: false,
         content: "",
-        error: `移动文件失败: ${error instanceof Error ? error.message : "未知错误"}`,
+        error: `${toolMsg.failed()}: ${error instanceof Error ? error.message : "unknown error"}`,
       };
     }
   },

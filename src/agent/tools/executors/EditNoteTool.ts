@@ -7,6 +7,7 @@ import { readFile, rename, exists } from "@/lib/tauri";
 import { join, resolve, dirname } from "@/lib/path";
 import { useAIStore } from "@/stores/useAIStore";
 import { useFileStore } from "@/stores/useFileStore";
+import { toolMsg } from "./messages";
 
 interface EditOperation {
   search: string;
@@ -30,7 +31,7 @@ export const EditNoteTool: ToolExecutor = {
         return {
           success: false,
           content: "",
-          error: "参数错误: new_name 不能包含路径分隔符。new_name 只能是文件名，不能包含路径。",
+          error: toolMsg.editNote.newNameInvalid(),
         };
       }
     }
@@ -59,7 +60,7 @@ export const EditNoteTool: ToolExecutor = {
       return {
         success: false,
         content: "",
-        error: "参数错误: edit_note 需要 search/replace 对来精确修改。如需追加内容，请提供 search（文件末尾内容）和 replace（末尾内容+新内容）",
+        error: `${toolMsg.invalidParams()}: edit_note requires search/replace pairs`,
       };
     }
 
@@ -67,15 +68,13 @@ export const EditNoteTool: ToolExecutor = {
       return {
         success: false,
         content: "",
-        error: `参数错误: 缺少 path 参数。
+        error: `${toolMsg.pathRequired()}
 
-正确用法:
+Usage:
 <edit_note>
-<path>笔记路径.md</path>
-<edits>[{"search": "要替换的原文", "replace": "替换后的新内容"}]</edits>
-</edit_note>
-
-请先用 read_note 读取文件，然后从读取结果中复制要修改的原文到 search 字段。`,
+<path>note-path.md</path>
+<edits>[{"search": "original", "replace": "new"}]</edits>
+</edit_note>`,
       };
     }
 
@@ -83,22 +82,13 @@ export const EditNoteTool: ToolExecutor = {
       return {
         success: false,
         content: "",
-        error: `参数错误: 缺少编辑内容。
+        error: `${toolMsg.editNote.editsRequired()}
 
-正确用法:
+Usage:
 <edit_note>
 <path>${path}</path>
-<edits>[{"search": "要替换的原文", "replace": "替换后的新内容"}]</edits>
-</edit_note>
-
-或者使用简化格式:
-<edit_note>
-<path>${path}</path>
-<search>要替换的原文</search>
-<replace>替换后的新内容</replace>
-</edit_note>
-
-注意: search 内容必须与文件中的内容完全一致！请先用 read_note 读取文件确认内容。`,
+<edits>[{"search": "original", "replace": "new"}]</edits>
+</edit_note>`,
       };
     }
 
@@ -116,14 +106,14 @@ export const EditNoteTool: ToolExecutor = {
         const edit = edits[i];
 
         if (!edit.search || edit.replace === undefined) {
-          failedEdits.push(`编辑 ${i + 1}: 缺少 search 或 replace`);
+          failedEdits.push(`Edit ${i + 1}: missing search or replace`);
           continue;
         }
 
         // 尝试精确匹配
         if (content.includes(edit.search)) {
           content = content.replace(edit.search, edit.replace);
-          appliedEdits.push(`编辑 ${i + 1}: 成功`);
+          appliedEdits.push(`Edit ${i + 1}: ${toolMsg.success()}`);
         } else {
           // 尝试规范化空白后匹配
           const normalizedContent = content.replace(/\r\n/g, "\n");
@@ -131,16 +121,14 @@ export const EditNoteTool: ToolExecutor = {
 
           if (normalizedContent.includes(normalizedSearch)) {
             content = normalizedContent.replace(normalizedSearch, edit.replace);
-            appliedEdits.push(`编辑 ${i + 1}: 成功 (规范化匹配)`);
+            appliedEdits.push(`Edit ${i + 1}: ${toolMsg.success()} (normalized)`);
           } else {
             // 提供更有用的错误信息
             const searchPreview = edit.search.length > 50
               ? edit.search.substring(0, 50) + "..."
               : edit.search;
             failedEdits.push(
-              `编辑 ${i + 1}: 未找到匹配内容 "${searchPreview}"
-提示: 请先用 read_note 读取 ${path}，然后从返回内容中精确复制要修改的部分到 search 字段。
-注意空格、换行、标点必须完全一致。`
+              `Edit ${i + 1}: ${toolMsg.editNote.searchNotFound()} "${searchPreview}"`
             );
           }
         }
@@ -163,7 +151,7 @@ export const EditNoteTool: ToolExecutor = {
           filePath: fullPath,
           original: oldContent,
           modified: content,
-          description: `Agent 编辑: ${appliedEdits.length} 处修改`,
+          description: `Agent edit: ${appliedEdits.length} changes`,
         });
 
         // 等待用户确认
@@ -174,13 +162,13 @@ export const EditNoteTool: ToolExecutor = {
 
         if (approved) {
           const summary = [
-            `文件: ${path}`,
-            `已生成 ${appliedEdits.length} 处修改，用户已确认并保存。`,
+            `File: ${path}`,
+            `Generated ${appliedEdits.length} edits, user confirmed.`,
             ...appliedEdits,
           ];
 
           if (failedEdits.length > 0) {
-            summary.push(`失败: ${failedEdits.length} 处`, ...failedEdits);
+            summary.push(`${toolMsg.failed()}: ${failedEdits.length}`, ...failedEdits);
           }
 
           // 如果提供了 new_name，执行重命名
@@ -191,7 +179,7 @@ export const EditNoteTool: ToolExecutor = {
 
               // 检查目标文件是否已存在
               if (await exists(newFullPath)) {
-                summary.push(`\n警告: 重命名失败 - 目标文件名已存在: ${newName}`);
+                summary.push(`\nWarning: rename failed - ${toolMsg.renameFile.targetExists()}`);
               } else {
                 // 执行重命名
                 await rename(fullPath, newFullPath);
@@ -200,7 +188,7 @@ export const EditNoteTool: ToolExecutor = {
                 const dir = dirname(path);
                 const newPath = dir ? `${dir}/${newName}` : newName;
                 
-                summary.push(`\n已重命名: ${path} -> ${newName}`);
+                summary.push(`\n${toolMsg.renameFile.success(path, newName)}`);
 
                 // 更新标签页中的路径和名称
                 useFileStore.getState().updateTabPath(path, newPath);
@@ -211,7 +199,7 @@ export const EditNoteTool: ToolExecutor = {
                 }, 100);
               }
             } catch (error) {
-              summary.push(`\n警告: 重命名失败 - ${error instanceof Error ? error.message : "未知错误"}`);
+              summary.push(`\nWarning: rename failed - ${error instanceof Error ? error.message : "unknown error"}`);
             }
           }
 
@@ -222,22 +210,22 @@ export const EditNoteTool: ToolExecutor = {
         } else {
           return {
             success: false,
-            content: "用户拒绝了修改建议。",
-            error: "用户拒绝了修改",
+            content: "User rejected the changes.",
+            error: "User rejected",
           };
         }
       } else {
         return {
           success: false,
           content: "",
-          error: `所有编辑都失败了:\n${failedEdits.join("\n")}`,
+          error: `All edits failed:\n${failedEdits.join("\n")}`,
         };
       }
     } catch (error) {
       return {
         success: false,
         content: "",
-        error: `编辑文件失败: ${error instanceof Error ? error.message : "未知错误"}`,
+        error: `${toolMsg.failed()}: ${error instanceof Error ? error.message : "unknown error"}`,
       };
     }
   },

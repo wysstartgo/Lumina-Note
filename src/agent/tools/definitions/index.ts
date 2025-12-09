@@ -1,8 +1,22 @@
 /**
  * 工具定义汇总
+ * 支持多语言国际化
  */
 
 import { ToolDefinition } from "../../types";
+import { getCurrentTranslations } from "@/stores/useLocaleStore";
+
+/**
+ * 获取本地化的工具定义
+ */
+function getLocalizedToolDef(toolName: string): { description: string; definition: string } {
+  const t = getCurrentTranslations();
+  const toolDef = t.prompts.tools[toolName as keyof typeof t.prompts.tools];
+  return {
+    description: toolDef?.description || toolName,
+    definition: toolDef?.definition || `## ${toolName}`,
+  };
+}
 
 // ============ read_note ============
 
@@ -1015,28 +1029,42 @@ export const createFlashcardDefinition: ToolDefinition = {
 
 // ============ 导出所有定义 ============
 
+// 基础工具定义（保留参数结构）
+const baseToolDefinitions: ToolDefinition[] = [
+  readNoteDefinition,
+  editNoteDefinition,
+  createNoteDefinition,
+  listNotesDefinition,
+  createFolderDefinition,
+  moveFileDefinition,
+  renameFileDefinition,
+  searchNotesDefinition,
+  attemptCompletionDefinition,
+  readCachedOutputDefinition,
+  deleteNoteDefinition,
+  grepSearchDefinition,
+  semanticSearchDefinition,
+  queryDatabaseDefinition,
+  addDatabaseRowDefinition,
+  getBacklinksDefinition,
+  generateFlashcardsDefinition,
+  createFlashcardDefinition,
+  deepSearchDefinition,
+];
+
+/**
+ * 获取所有工具定义（动态本地化）
+ * description 和 definition 会根据当前语言动态返回
+ */
 export function getAllToolDefinitions(): ToolDefinition[] {
-  return [
-    readNoteDefinition,
-    editNoteDefinition,
-    createNoteDefinition,
-    listNotesDefinition,
-    createFolderDefinition,
-    moveFileDefinition,
-    renameFileDefinition,
-    searchNotesDefinition,
-    attemptCompletionDefinition,
-    readCachedOutputDefinition,
-    deleteNoteDefinition,
-    grepSearchDefinition,
-    semanticSearchDefinition,
-    queryDatabaseDefinition,
-    addDatabaseRowDefinition,
-    getBacklinksDefinition,
-    generateFlashcardsDefinition,
-    createFlashcardDefinition,
-    deepSearchDefinition,
-  ];
+  return baseToolDefinitions.map(tool => {
+    const localized = getLocalizedToolDef(tool.name);
+    return {
+      ...tool,
+      description: localized.description,
+      definition: localized.definition,
+    };
+  });
 }
 
 export function getToolDefinition(name: string): ToolDefinition | undefined {

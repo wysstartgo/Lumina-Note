@@ -13,6 +13,7 @@ import {
   type LLMConfig,
   type IntentType,
 } from "@/services/llm";
+import { getCurrentTranslations } from "@/stores/useLocaleStore";
 
 // 重新导出 Message 类型以保持兼容
 export type { Message };
@@ -60,54 +61,31 @@ export function parseFileReferences(message: string): string[] {
 
 // Build system prompt for file editing
 function buildSystemPrompt(files: FileReference[], intent?: IntentType): string {
+  const t = getCurrentTranslations();
+  const chatPrompt = t.prompts.chat;
+  const editPrompt = t.prompts.edit;
+  
   // 如果是闲聊意图，使用极简 Prompt
   if (intent === "chat") {
-    let prompt = `你是一个灵感与写作建议助手。
-你的目标是激发用户的创造力，提供写作角度、结构建议和内容改进方案。
-请不要直接修改文件，而是提供思路、大纲或具体的段落建议供用户参考。`;
+    let prompt = chatPrompt.system;
     if (files.length > 0) {
-      prompt += "\n\n上下文文件：\n";
+      prompt += `\n\n${chatPrompt.contextFiles}\n`;
       for (const file of files) {
-        prompt += `\n=== ${file.name} ===\n${file.content || "(空)"}\n`;
+        prompt += `\n=== ${file.name} ===\n${file.content || chatPrompt.emptyFile}\n`;
       }
     }
     return prompt;
   }
 
   // 其他意图（如 edit, organize, complex）使用完整 Prompt
-  let prompt = `你是一个智能笔记助手，专门帮助用户编辑和改进 Markdown 笔记。
-
-你的能力：
-1. 理解和分析笔记内容
-2. 根据用户需求修改笔记
-3. 优化数学公式的表达
-4. 改进文章结构和逻辑
-
-当用户要求修改文件时，请使用以下格式输出修改：
-
-<edit file="文件路径">
-<description>修改说明</description>
-<original>
-原始内容（用于定位，必须与当前文件内容完全匹配）
-</original>
-<modified>
-修改后的内容
-</modified>
-</edit>
-
-重要说明：
-- <original> 中的内容必须是文件的【当前实际内容】，不是之前建议修改的内容
-- 请始终以下面提供的最新文件内容为准
-- 忽略对话历史中之前的修改建议，用户可能已拒绝那些修改
-- 如果有多处修改，可以使用多个 <edit> 块
-`;
+  let prompt = editPrompt.system;
 
   if (files.length > 0) {
-    prompt += "\n\n【当前文件的最新内容】（以此为准）：\n";
+    prompt += `\n\n${editPrompt.currentFiles}\n`;
     for (const file of files) {
       prompt += `\n=== ${file.name} ===\n`;
-      prompt += file.content || "(内容未加载)";
-      prompt += "\n=== 文件结束 ===\n";
+      prompt += file.content || editPrompt.contentNotLoaded;
+      prompt += `\n=== ${editPrompt.fileEnd} ===\n`;
     }
   }
 

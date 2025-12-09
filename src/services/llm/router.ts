@@ -1,6 +1,7 @@
 import { Message, Intent, LLMConfig } from "./types";
 import { createProvider } from "./factory";
 import { getLLMConfig } from "./config";
+import { getCurrentTranslations } from "@/stores/useLocaleStore";
 
 export class IntentRouter {
   /**
@@ -27,18 +28,9 @@ export class IntentRouter {
 
       const provider = createProvider(routerConfig);
 
-      // 构建 Prompt
-      const systemPrompt = `你是一个意图分类器。分析用户的请求并将其归类为以下意图之一：
-
-1. "chat": 闲聊、简单问题、问候。
-2. "search": 询问查找笔记中的信息、搜索特定主题。
-3. "create": 请求创建新笔记、撰写文章、生成大纲。
-4. "edit": 请求修改、重写、修复、格式化现有文本/笔记，或向现有笔记写入新内容。
-5. "organize": 请求整理笔记、创建文件夹、移动文件或清理。
-6. "flashcard": 请求生成闪卡、制作记忆卡片、从内容提取知识点用于复习、Anki 卡片。
-7. "complex": 多步骤任务、编码、推理或需要深度分析的请求。
-
-仅输出 JSON：{"type": "intent_type", "confidence": 0.0-1.0, "reasoning": "简短说明"}`;
+      // 构建 Prompt（使用本地化翻译）
+      const t = getCurrentTranslations();
+      const systemPrompt = t.prompts.router.system;
 
       const messages: Message[] = [
         { role: "system", content: systemPrompt },

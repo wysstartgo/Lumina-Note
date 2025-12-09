@@ -5,6 +5,7 @@
 import { ToolExecutor, ToolResult, ToolContext } from "../../types";
 import { readFile } from "@/lib/tauri";
 import { resolve } from "@/lib/path";
+import { toolMsg } from "./messages";
 
 export const ReadNoteTool: ToolExecutor = {
   name: "read_note",
@@ -39,19 +40,12 @@ export const ReadNoteTool: ToolExecutor = {
       return {
         success: false,
         content: "",
-        error: `参数错误: 缺少 path 参数。
+        error: `${toolMsg.pathRequired()}
 
-正确用法:
+Usage:
 <read_note>
-<path>笔记路径.md</path>
-</read_note>
-
-读取多个文件:
-<read_note>
-<paths>["文件1.md", "文件2.md"]</paths>
-</read_note>
-
-提示: 路径相对于笔记库根目录。`,
+<path>note-path.md</path>
+</read_note>`,
       };
     }
 
@@ -74,7 +68,7 @@ export const ReadNoteTool: ToolExecutor = {
         results.push(`=== ${relativePath} ===\n${numberedContent}\n=== END ===`);
       } catch (error) {
         results.push(
-          `=== ${relativePath} ===\n错误: ${error instanceof Error ? error.message : "无法读取文件"}\n=== END ===`
+          `=== ${relativePath} ===\nError: ${error instanceof Error ? error.message : toolMsg.fileNotFound(relativePath)}\n=== END ===`
         );
       }
     }

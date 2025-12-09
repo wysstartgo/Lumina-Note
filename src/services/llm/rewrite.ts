@@ -1,6 +1,7 @@
 import { Message } from "./types";
 import { createProvider } from "./factory";
 import { getLLMConfig } from "./config";
+import { getCurrentTranslations } from "@/stores/useLocaleStore";
 
 /**
  * QueryRewriter
@@ -22,15 +23,9 @@ export class QueryRewriter {
 
         const provider = createProvider(rewriteConfig);
 
-        // 构建一个保守的改写 prompt：输出仅为改写后的一句话查询
-        // 重要：禁止将查询改写成“已完成/已执行”的陈述（例如“已删除...”、“已成功...”等）——改写结果必须是请求/任务形式，用于指导后续模型执行。
-        const systemPrompt = `你是一个查询改写助手。对用户的输入进行保守改写，目标是：
-    1) 保留所有与意图相关的关键词和实体；
-    2) 删除无意义闲聊或客套语；
-    3) 将问题或请求简化为适合意图识别与任务执行的短句（不超过 60 个字符）；
-    4) **不要**使用过去时或声称任何动作已经完成（不要输出“已删除”、“已完成”、“已成功”等）；
-    5) 输出必须是请求/任务形式，例如“删除文件 foo.md 的末尾总结部分”或“将 xxx 合并到 yyy”；
-    6) 只输出改写后的单句（不要添加解释、前缀或多余标点）。`;
+        // 构建保守的改写 prompt（使用本地化翻译）
+        const t = getCurrentTranslations();
+        const systemPrompt = t.prompts.rewriter.system;
 
         const messages: Message[] = [
             { role: "system", content: systemPrompt },

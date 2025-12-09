@@ -6,6 +6,7 @@
 import { ToolExecutor, ToolResult, ToolContext } from "../../types";
 import { useFileStore } from "@/stores/useFileStore";
 import { readFile, FileEntry } from "@/lib/tauri";
+import { toolMsg } from "./messages";
 
 interface GrepMatch {
   path: string;
@@ -32,7 +33,7 @@ export const GrepSearchTool: ToolExecutor = {
       return {
         success: false,
         content: "",
-        error: "参数错误: query 必须是非空字符串",
+        error: `${toolMsg.invalidParams()}: query required`,
       };
     }
 
@@ -43,7 +44,7 @@ export const GrepSearchTool: ToolExecutor = {
         return {
           success: false,
           content: "",
-          error: "笔记库为空或未加载",
+          error: "Note library is empty or not loaded",
         };
       }
 
@@ -61,7 +62,7 @@ export const GrepSearchTool: ToolExecutor = {
         return {
           success: false,
           content: "",
-          error: `正则表达式错误: ${e instanceof Error ? e.message : "无效的正则"}`,
+          error: `Regex error: ${e instanceof Error ? e.message : "invalid regex"}`,
         };
       }
 
@@ -128,7 +129,7 @@ export const GrepSearchTool: ToolExecutor = {
       if (matches.length === 0) {
         return {
           success: true,
-          content: `未找到匹配 "${query}" 的结果。`,
+          content: toolMsg.search.noResults(),
         };
       }
 
@@ -138,18 +139,18 @@ export const GrepSearchTool: ToolExecutor = {
       }).join("\n\n");
 
       const truncatedNote = matches.length >= limit 
-        ? `\n\n(结果已截断，显示前 ${limit} 条)` 
+        ? `\n\n(Results truncated, showing first ${limit})` 
         : "";
 
       return {
         success: true,
-        content: `找到 ${matches.length} 处匹配:\n\n${formattedResults}${truncatedNote}`,
+        content: `${toolMsg.search.found(matches.length)}\n\n${formattedResults}${truncatedNote}`,
       };
     } catch (error) {
       return {
         success: false,
         content: "",
-        error: `搜索失败: ${error instanceof Error ? error.message : "未知错误"}`,
+        error: `${toolMsg.failed()}: ${error instanceof Error ? error.message : "unknown error"}`,
       };
     }
   },

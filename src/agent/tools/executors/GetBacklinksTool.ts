@@ -6,6 +6,7 @@
 import { ToolExecutor, ToolResult, ToolContext } from "../../types";
 import { useNoteIndexStore, Backlink } from "@/stores/useNoteIndexStore";
 import { useFileStore } from "@/stores/useFileStore";
+import { toolMsg } from "./messages";
 
 export const GetBacklinksTool: ToolExecutor = {
   name: "get_backlinks",
@@ -22,7 +23,7 @@ export const GetBacklinksTool: ToolExecutor = {
       return {
         success: false,
         content: "",
-        error: "参数错误: note_name 必须是非空字符串",
+        error: `${toolMsg.invalidParams()}: note_name required`,
       };
     }
 
@@ -49,27 +50,27 @@ export const GetBacklinksTool: ToolExecutor = {
       if (backlinks.length === 0) {
         return {
           success: true,
-          content: `笔记 "${cleanName}" 没有反向链接。\n\n这意味着没有其他笔记链接到这篇笔记。`,
+          content: `Note "${cleanName}" has no backlinks.`,
         };
       }
 
       // 格式化结果
       const formattedResults = backlinks.map((bl: Backlink, i: number) => {
         const contextPart = includeContext && bl.context 
-          ? `\n   上下文: \`${bl.context.slice(0, 150)}${bl.context.length > 150 ? "..." : ""}\``
+          ? `\n   Context: \`${bl.context.slice(0, 150)}${bl.context.length > 150 ? "..." : ""}\``
           : "";
-        return `${i + 1}. **${bl.name}** (第 ${bl.line} 行)${contextPart}`;
+        return `${i + 1}. **${bl.name}** (line ${bl.line})${contextPart}`;
       }).join("\n\n");
 
       return {
         success: true,
-        content: `笔记 "${cleanName}" 有 ${backlinks.length} 个反向链接:\n\n${formattedResults}`,
+        content: `Note "${cleanName}" has ${backlinks.length} backlinks:\n\n${formattedResults}`,
       };
     } catch (error) {
       return {
         success: false,
         content: "",
-        error: `获取反向链接失败: ${error instanceof Error ? error.message : "未知错误"}`,
+        error: `${toolMsg.failed()}: ${error instanceof Error ? error.message : "unknown error"}`,
       };
     }
   },

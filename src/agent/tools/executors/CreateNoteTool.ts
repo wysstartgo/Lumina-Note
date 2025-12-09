@@ -7,6 +7,7 @@ import { ToolExecutor, ToolResult, ToolContext } from "../../types";
 import { writeFile, exists, createDir } from "@/lib/tauri";
 import { dirname, resolve } from "@/lib/path";
 import { useFileStore } from "@/stores/useFileStore";
+import { toolMsg } from "./messages";
 
 export const CreateNoteTool: ToolExecutor = {
   name: "create_note",
@@ -29,11 +30,11 @@ export const CreateNoteTool: ToolExecutor = {
       return {
         success: false,
         content: "",
-        error: `参数错误: path 必须是字符串。
+        error: `${toolMsg.pathRequired()}
 
-正确用法:
+Usage:
 <create_note>
-<path>笔记路径.md</path>
+<path>note-path.md</path>
 <content>...</content>
 </create_note>`,
       };
@@ -43,14 +44,14 @@ export const CreateNoteTool: ToolExecutor = {
       return {
         success: false,
         content: "",
-        error: `参数错误: 缺少 content 参数。
+        error: `${toolMsg.invalidParams()}: content required
 
-正确用法:
+Usage:
 <create_note>
 <path>${path}</path>
-<content># 笔记标题
+<content># Title
 
-笔记内容...</content>
+Content...</content>
 </create_note>`,
       };
     }
@@ -77,14 +78,14 @@ export const CreateNoteTool: ToolExecutor = {
       return {
         success: true,
         content: fileExisted
-          ? `已覆盖文件: ${path}`
-          : `已创建文件: ${path}`,
+          ? `${toolMsg.createNote.alreadyExists()} - overwritten: ${path}`
+          : toolMsg.createNote.success(path),
       };
     } catch (error) {
       return {
         success: false,
         content: "",
-        error: `创建文件失败: ${error instanceof Error ? error.message : "未知错误"}`,
+        error: `${toolMsg.failed()}: ${error instanceof Error ? error.message : "unknown error"}`,
       };
     }
   },

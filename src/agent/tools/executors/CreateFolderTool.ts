@@ -6,6 +6,7 @@ import { ToolExecutor, ToolResult, ToolContext } from "../../types";
 import { exists, createDir } from "@/lib/tauri";
 import { join } from "@/lib/path";
 import { useFileStore } from "@/stores/useFileStore";
+import { toolMsg } from "./messages";
 
 export const CreateFolderTool: ToolExecutor = {
   name: "create_folder",
@@ -21,11 +22,11 @@ export const CreateFolderTool: ToolExecutor = {
       return {
         success: false,
         content: "",
-        error: `参数错误: 缺少 path 参数。
+        error: `${toolMsg.pathRequired()}
 
-正确用法:
+Usage:
 <create_folder>
-<path>新目录路径</path>
+<path>folder-path</path>
 </create_folder>`,
       };
     }
@@ -38,7 +39,7 @@ export const CreateFolderTool: ToolExecutor = {
         return {
           success: false,
           content: "",
-          error: `目录已存在: ${path}`,
+          error: toolMsg.createFolder.alreadyExists(),
         };
       }
 
@@ -52,13 +53,13 @@ export const CreateFolderTool: ToolExecutor = {
 
       return {
         success: true,
-        content: `已创建目录: ${path}`,
+        content: toolMsg.createFolder.success(path),
       };
     } catch (error) {
       return {
         success: false,
         content: "",
-        error: `创建目录失败: ${error instanceof Error ? error.message : "未知错误"}`,
+        error: `${toolMsg.failed()}: ${error instanceof Error ? error.message : "unknown error"}`,
       };
     }
   },

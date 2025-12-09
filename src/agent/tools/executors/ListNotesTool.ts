@@ -5,6 +5,7 @@
 import { ToolExecutor, ToolResult, ToolContext } from "../../types";
 import { readDir } from "@/lib/tauri";
 import { resolve } from "@/lib/path";
+import { toolMsg } from "./messages";
 
 interface FileEntry {
   name: string;
@@ -48,13 +49,13 @@ export const ListNotesTool: ToolExecutor = {
 
       return {
         success: true,
-        content: `目录: ${directory || "/"}\n\n${output}`,
+        content: `Directory: ${directory || "/"}\n\n${output}`,
       };
     } catch (error) {
       return {
         success: false,
         content: "",
-        error: `列出目录失败: ${error instanceof Error ? error.message : "未知错误"}`,
+        error: `${toolMsg.failed()}: ${error instanceof Error ? error.message : "unknown error"}`,
       };
     }
   },

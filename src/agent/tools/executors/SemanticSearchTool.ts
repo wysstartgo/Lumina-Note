@@ -6,6 +6,7 @@
 import { ToolExecutor, ToolResult, ToolContext } from "../../types";
 import { useRAGStore } from "@/stores/useRAGStore";
 import type { SearchResult } from "@/services/rag";
+import { toolMsg } from "./messages";
 
 export const SemanticSearchTool: ToolExecutor = {
   name: "semantic_search",
@@ -24,7 +25,7 @@ export const SemanticSearchTool: ToolExecutor = {
       return {
         success: false,
         content: "",
-        error: "参数错误: query 必须是非空字符串",
+        error: `${toolMsg.invalidParams()}: query required`,
       };
     }
 
@@ -36,7 +37,7 @@ export const SemanticSearchTool: ToolExecutor = {
         return {
           success: false,
           content: "",
-          error: "RAG 系统未初始化。请先在设置中配置 embedding API 并建立索引。",
+          error: "RAG system not initialized. Please configure embedding API in settings.",
         };
       }
 
@@ -54,7 +55,7 @@ export const SemanticSearchTool: ToolExecutor = {
       if (filteredResults.length === 0) {
         return {
           success: true,
-          content: `未找到与 "${query}" 语义相关的内容 (最低相似度: ${minScore * 100}%)。\n\n提示: 可以尝试降低 min_score 参数或使用 grep_search 进行关键词搜索。`,
+          content: `${toolMsg.search.noResults()} (min_score: ${minScore * 100}%)`,
         };
       }
 
@@ -67,9 +68,9 @@ export const SemanticSearchTool: ToolExecutor = {
               ? r.content.substring(0, 400) + "..."
               : r.content;
 
-          return `### ${i + 1}. ${r.filePath} (相似度: ${score}%)
-**章节**: ${r.heading || "无标题"}
-**位置**: 第 ${r.startLine}-${r.endLine} 行
+          return `### ${i + 1}. ${r.filePath} (similarity: ${score}%)
+**Section**: ${r.heading || "untitled"}
+**Location**: line ${r.startLine}-${r.endLine}
 
 \`\`\`
 ${preview}
@@ -79,13 +80,13 @@ ${preview}
 
       return {
         success: true,
-        content: `找到 ${filteredResults.length} 个语义相关结果:\n\n${formattedResults}`,
+        content: `${toolMsg.search.found(filteredResults.length)}\n\n${formattedResults}`,
       };
     } catch (error) {
       return {
         success: false,
         content: "",
-        error: `语义搜索失败: ${error instanceof Error ? error.message : "未知错误"}`,
+        error: `${toolMsg.failed()}: ${error instanceof Error ? error.message : "unknown error"}`,
       };
     }
   },

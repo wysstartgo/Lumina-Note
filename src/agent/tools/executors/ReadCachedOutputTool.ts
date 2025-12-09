@@ -4,6 +4,7 @@
 
 import { getCachedToolOutput } from "@/agent/core/ToolOutputCache";
 import { ToolExecutor, ToolResult } from "../../types";
+import { toolMsg } from "./messages";
 
 export const ReadCachedOutputTool: ToolExecutor = {
   name: "read_cached_output",
@@ -15,7 +16,7 @@ export const ReadCachedOutputTool: ToolExecutor = {
       return {
         success: false,
         content: "",
-        error: "缺少 id 参数",
+        error: `${toolMsg.invalidParams()}: id required`,
       };
     }
 
@@ -25,7 +26,7 @@ export const ReadCachedOutputTool: ToolExecutor = {
       return {
         success: false,
         content: "",
-        error: `未找到缓存的输出，id=${id}，可能已过期或未生成缓存。`,
+        error: `Cache not found: id=${id}`,
       };
     }
 

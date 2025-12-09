@@ -11,6 +11,7 @@ import { INITIAL_SM2_STATE } from '../../../lib/sm2';
 import { writeFile, exists, createDir } from '@/lib/tauri';
 import { resolve } from '@/lib/path';
 import { useFileStore } from '@/stores/useFileStore';
+import { toolMsg } from './messages';
 
 export const GenerateFlashcardsTool: ToolExecutor = {
   name: 'generate_flashcards',
@@ -40,7 +41,7 @@ export const GenerateFlashcardsTool: ToolExecutor = {
       return {
         success: false,
         content: '',
-        error: '缺少 content 参数：需要提供要生成闪卡的内容',
+        error: `${toolMsg.invalidParams()}: content required`,
       };
     }
 
@@ -164,7 +165,7 @@ export const CreateFlashcardTool: ToolExecutor = {
         return {
           success: false,
           content: '',
-          error: '问答卡需要 front 和 back 字段',
+          error: `${toolMsg.invalidParams()}: basic card needs front and back`,
         };
       }
     } else if (type === 'cloze') {
@@ -172,7 +173,7 @@ export const CreateFlashcardTool: ToolExecutor = {
         return {
           success: false,
           content: '',
-          error: '填空卡需要 text 字段（包含 {{c1::答案}} 格式）',
+          error: `${toolMsg.invalidParams()}: cloze card needs text with {{c1::answer}}`,
         };
       }
     } else if (type === 'mcq') {
@@ -180,7 +181,7 @@ export const CreateFlashcardTool: ToolExecutor = {
         return {
           success: false,
           content: '',
-          error: '选择题需要 question, options, answer 字段',
+          error: `${toolMsg.invalidParams()}: mcq card needs question, options, answer`,
         };
       }
     } else if (type === 'list') {
@@ -188,7 +189,7 @@ export const CreateFlashcardTool: ToolExecutor = {
         return {
           success: false,
           content: '',
-          error: '列表题需要 question 和 items 字段',
+          error: `${toolMsg.invalidParams()}: list card needs question and items`,
         };
       }
     }
@@ -225,7 +226,7 @@ export const CreateFlashcardTool: ToolExecutor = {
         return {
           success: false,
           content: '',
-          error: '创建闪卡失败: 未找到工作区路径，请先打开一个笔记库',
+          error: `${toolMsg.failed()}: workspace path not found`,
         };
       }
       
@@ -253,14 +254,14 @@ export const CreateFlashcardTool: ToolExecutor = {
 
       return {
         success: true,
-        content: `✅ 已创建闪卡: ${notePath}
+        content: `${toolMsg.flashcard.created()}: ${notePath}
 
-类型: ${type}
-牌组: ${deck}
-${type === 'basic' || type === 'basic-reversed' ? `问题: ${front}` : ''}
-${type === 'cloze' ? `内容: ${text?.slice(0, 50)}...` : ''}
-${type === 'mcq' ? `问题: ${question}` : ''}
-${type === 'list' ? `问题: ${question}` : ''}`,
+Type: ${type}
+Deck: ${deck}
+${type === 'basic' || type === 'basic-reversed' ? `Question: ${front}` : ''}
+${type === 'cloze' ? `Content: ${text?.slice(0, 50)}...` : ''}
+${type === 'mcq' ? `Question: ${question}` : ''}
+${type === 'list' ? `Question: ${question}` : ''}`,
       };
     } catch (error) {
       console.error('[CreateFlashcard] Error:', error);
@@ -268,7 +269,7 @@ ${type === 'list' ? `问题: ${question}` : ''}`,
       return {
         success: false,
         content: '',
-        error: `创建闪卡失败: ${errorMessage || '未知错误'}`,
+        error: `${toolMsg.failed()}: ${errorMessage || 'unknown error'}`,
       };
     }
   },

@@ -13,6 +13,7 @@ import { readFile } from "@/lib/tauri";
 import { resolve } from "@/lib/path";
 import { useNoteIndexStore } from "@/stores/useNoteIndexStore";
 import { useRAGStore } from "@/stores/useRAGStore";
+import { toolMsg } from "./messages";
 
 interface SearchHit {
   path: string;
@@ -40,7 +41,7 @@ export const DeepSearchTool: ToolExecutor = {
       return {
         success: false,
         content: "",
-        error: "参数错误: query 必须是非空字符串",
+        error: `${toolMsg.invalidParams()}: query required`,
       };
     }
 
@@ -94,7 +95,7 @@ export const DeepSearchTool: ToolExecutor = {
       if (hits.length === 0) {
         return {
           success: true,
-          content: `未找到与 "${query}" 相关的笔记。\n\n提示: 尝试使用不同的关键词或更具体的描述。`,
+          content: toolMsg.search.noResults(),
         };
       }
 
@@ -110,22 +111,22 @@ export const DeepSearchTool: ToolExecutor = {
       // 5. 取 top N
       const topHits = hits.slice(0, limit);
 
-      // 6. 构建搜索结果摘要
-      let output = `## 搜索结果: "${query}"\n\n`;
-      output += `找到 ${hits.length} 个相关笔记，显示前 ${topHits.length} 个:\n\n`;
+      // 6. Build search result summary
+      let output = `## Search Results: "${query}"\n\n`;
+      output += `${toolMsg.search.found(hits.length)}, showing top ${topHits.length}:\n\n`;
 
       topHits.forEach((hit, i) => {
         const sourceLabel = hit.source === "title" 
-          ? "标题匹配" 
+          ? "title" 
           : hit.source === "semantic" 
-            ? `语义 ${((hit.score || 0) * 100).toFixed(0)}%` 
-            : "关键词";
+            ? `semantic ${((hit.score || 0) * 100).toFixed(0)}%` 
+            : "keyword";
         output += `${i + 1}. **${hit.path}** [${sourceLabel}]\n`;
       });
 
-      // 7. 并行批量读取内容
+      // 7. Read content in parallel
       if (includeContent) {
-        output += `\n---\n\n## 笔记内容\n`;
+        output += `\n---\n\n## Note Content\n`;
 
         const contentResults = await readFilesParallel(
           topHits.map(hit => ({
@@ -140,18 +141,18 @@ export const DeepSearchTool: ToolExecutor = {
             // 限制单个文件内容长度
             const maxLength = 2000;
             const truncated = result.content!.length > maxLength 
-              ? result.content!.slice(0, maxLength) + "\n\n... (内容已截断，使用 read_note 查看完整内容)"
+              ? result.content!.slice(0, maxLength) + "\n\n... (truncated, use read_note for full content)"
               : result.content!;
 
             output += `\n### 📄 ${result.path}\n\n\`\`\`markdown\n${truncated}\n\`\`\`\n`;
           } else {
-            output += `\n### 📄 ${result.path}\n\n> 读取失败: ${result.error}\n`;
+            output += `\n### 📄 ${result.path}\n\n> Read failed: ${result.error}\n`;
           }
         }
       }
 
       const elapsed = Date.now() - startTime;
-      console.log(`[deep_search] 完成，耗时 ${elapsed}ms，找到 ${hits.length} 个结果`);
+      console.log(`[deep_search] completed in ${elapsed}ms, found ${hits.length} results`);
 
       return {
         success: true,
@@ -161,7 +162,7 @@ export const DeepSearchTool: ToolExecutor = {
       return {
         success: false,
         content: "",
-        error: `deep_search 失败: ${error instanceof Error ? error.message : "未知错误"}`,
+        error: `${toolMsg.failed()}: ${error instanceof Error ? error.message : "unknown error"}`,
       };
     }
   },
@@ -274,7 +275,7 @@ async function readFilesParallel(
           return { 
             path: file.path, 
             success: false, 
-            error: e instanceof Error ? e.message : "未知错误" 
+            error: e instanceof Error ? e.message : "unknown error" 
           };
         }
       })

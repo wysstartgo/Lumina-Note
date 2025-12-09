@@ -8,6 +8,21 @@ interface LocaleState {
   setLocale: (locale: Locale) => void;
 }
 
+/**
+ * 非 React 环境下获取当前翻译
+ * 用于 Agent prompts、LLM services 等非组件代码
+ */
+export function getCurrentTranslations(): Translations {
+  return useLocaleStore.getState().t;
+}
+
+/**
+ * 非 React 环境下获取当前语言
+ */
+export function getCurrentLocale(): Locale {
+  return useLocaleStore.getState().locale;
+}
+
 // 获取保存的语言或检测系统语言
 function getInitialLocale(): Locale {
   try {

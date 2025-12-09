@@ -1,8 +1,10 @@
 /**
  * 消息解析器 - 解析 LLM 响应中的工具调用和完成标记
+ * 支持多语言国际化
  */
 
 import { ToolCall } from "../types";
+import { getCurrentTranslations } from "@/stores/useLocaleStore";
 
 export interface ParsedResponse {
   text: string;
@@ -102,9 +104,9 @@ export function formatToolResult(toolCall: ToolCall, result: { success: boolean;
     .replace(/"/g, "&quot;");  // 转义引号
 
   if (content.length > MAX_CONTENT_LENGTH) {
-    content = content.slice(0, MAX_CONTENT_LENGTH) + `
-
-... [内容已截断，原长度 ${result.content.length} 字符]`;
+    const t = getCurrentTranslations();
+    const truncatedMsg = t.prompts.agent.messageParser.contentTruncated.replace('{length}', String(result.content.length));
+    content = content.slice(0, MAX_CONTENT_LENGTH) + `\n\n${truncatedMsg}`;
   }
 
   const attributes = [`name="${toolCall.name}"`, `params="${paramsSignature}"`];
@@ -119,21 +121,6 @@ ${content}
  * 获取无工具使用的提示
  */
 export function getNoToolUsedPrompt(): string {
-  return `你的响应没有包含有效的工具调用。
-
-**重要**：所有响应都必须使用工具格式。
-
-1. **如果需要操作笔记**，使用对应工具：
-<read_note>
-<paths>["笔记路径.md"]</paths>
-</read_note>
-
-2. **如果是回答问题/对话**，直接使用 attempt_completion，把完整回复放在 result 里：
-<attempt_completion>
-<result>这里是你要回复给用户的完整内容...
-
-可以包含多段落、列表、代码等...</result>
-</attempt_completion>
-
-请立即使用上述格式重新响应。`;
+  const t = getCurrentTranslations();
+  return t.prompts.agent.messageParser.noToolUsed;
 }

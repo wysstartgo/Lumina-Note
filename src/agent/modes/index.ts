@@ -1,68 +1,103 @@
 /**
  * Agent 模式定义
+ * 支持多语言国际化
  */
 
 import { AgentMode, AgentModeSlug } from "../types";
+import { getCurrentTranslations } from "@/stores/useLocaleStore";
 
-export const MODES: Record<AgentModeSlug, AgentMode> = {
-  editor: {
-    slug: "editor",
-    name: "📝 编辑助手",
-    icon: "pencil",
-    roleDefinition: "你是一个专业的笔记编辑助手，擅长优化 Markdown 格式、改进文章结构、修正错误、润色文字。你也可以管理数据库中的记录，还可以从笔记内容生成闪卡帮助用户记忆。",
-    tools: [
-      "read_note", "edit_note",
-      "list_notes", "search_notes", "grep_search", "deep_search",
-      "query_database", "add_database_row",
-      "generate_flashcards", "create_flashcard",
-      "get_backlinks", "read_cached_output"
-    ],
-  },
-
-  organizer: {
-    slug: "organizer",
-    name: "📁 整理大师",
-    icon: "folder",
-    roleDefinition: "你是一个笔记整理专家，擅长分析笔记结构、建议分类方案、执行批量重组、优化目录组织。你也可以管理数据库。",
-    tools: [
-      "read_note", "delete_note", "move_file", "rename_file", "create_folder",
-      "list_notes", "search_notes", "grep_search",
-      "query_database", "add_database_row",
-      "get_backlinks", "read_cached_output"
-    ],
-  },
-
-  researcher: {
-    slug: "researcher",
-    name: "🔍 研究助手",
-    icon: "search",
-    roleDefinition: "你是一个研究助手，擅长在笔记库中发现关联、提取知识、生成摘要、回答基于笔记内容的问题。使用搜索功能来精准定位相关内容。你还可以从研究内容生成闪卡帮助用户记忆关键知识点。",
-    tools: [
-      "read_note", "list_notes",
-      "search_notes", "grep_search", "semantic_search", "deep_search",
-      "query_database",
-      "generate_flashcards", "create_flashcard",
-      "get_backlinks", "read_cached_output"
-    ],
-  },
-
-  writer: {
-    slug: "writer",
-    name: "✍️ 写作助手",
-    icon: "pen-tool",
-    roleDefinition: "你是一个创意写作助手，帮助用户扩展想法、完善草稿、润色文字、生成新内容。对于生成的长文本内容（如文章、计划、大纲），你应该优先将其保存为新的笔记文件，而不是直接在对话中输出。你还可以从内容生成闪卡。",
-    tools: [
-      "read_note", "create_note", "create_folder",
-      "list_notes", "search_notes", "grep_search",
-      "generate_flashcards", "create_flashcard", "read_cached_output"
-    ],
-  },
+// 工具列表配置（不需要翻译）
+const MODE_TOOLS: Record<AgentModeSlug, string[]> = {
+  editor: [
+    "read_note", "edit_note",
+    "list_notes", "search_notes", "grep_search", "deep_search",
+    "query_database", "add_database_row",
+    "generate_flashcards", "create_flashcard",
+    "get_backlinks", "read_cached_output"
+  ],
+  organizer: [
+    "read_note", "delete_note", "move_file", "rename_file", "create_folder",
+    "list_notes", "search_notes", "grep_search",
+    "query_database", "add_database_row",
+    "get_backlinks", "read_cached_output"
+  ],
+  researcher: [
+    "read_note", "list_notes",
+    "search_notes", "grep_search", "semantic_search", "deep_search",
+    "query_database",
+    "generate_flashcards", "create_flashcard",
+    "get_backlinks", "read_cached_output"
+  ],
+  writer: [
+    "read_note", "create_note", "create_folder",
+    "list_notes", "search_notes", "grep_search",
+    "generate_flashcards", "create_flashcard", "read_cached_output"
+  ],
 };
 
+const MODE_ICONS: Record<AgentModeSlug, string> = {
+  editor: "pencil",
+  organizer: "folder",
+  researcher: "search",
+  writer: "pen-tool",
+};
+
+/**
+ * 获取本地化的模式定义
+ */
+function getLocalizedModes(): Record<AgentModeSlug, AgentMode> {
+  const t = getCurrentTranslations();
+  const modes = t.prompts.agent.modes;
+  
+  return {
+    editor: {
+      slug: "editor",
+      name: modes.editor.name,
+      icon: MODE_ICONS.editor,
+      roleDefinition: modes.editor.roleDefinition,
+      tools: MODE_TOOLS.editor,
+    },
+    organizer: {
+      slug: "organizer",
+      name: modes.organizer.name,
+      icon: MODE_ICONS.organizer,
+      roleDefinition: modes.organizer.roleDefinition,
+      tools: MODE_TOOLS.organizer,
+    },
+    researcher: {
+      slug: "researcher",
+      name: modes.researcher.name,
+      icon: MODE_ICONS.researcher,
+      roleDefinition: modes.researcher.roleDefinition,
+      tools: MODE_TOOLS.researcher,
+    },
+    writer: {
+      slug: "writer",
+      name: modes.writer.name,
+      icon: MODE_ICONS.writer,
+      roleDefinition: modes.writer.roleDefinition,
+      tools: MODE_TOOLS.writer,
+    },
+  };
+}
+
+// 动态获取 MODES（每次访问时根据当前语言返回）
+export const MODES = new Proxy({} as Record<AgentModeSlug, AgentMode>, {
+  get(_, prop: AgentModeSlug) {
+    return getLocalizedModes()[prop];
+  },
+  ownKeys() {
+    return ["editor", "organizer", "researcher", "writer"];
+  },
+  getOwnPropertyDescriptor() {
+    return { enumerable: true, configurable: true };
+  },
+});
+
 export function getMode(slug: AgentModeSlug): AgentMode {
-  return MODES[slug];
+  return getLocalizedModes()[slug];
 }
 
 export function getModeList(): AgentMode[] {
-  return Object.values(MODES);
+  return Object.values(getLocalizedModes());
 }
