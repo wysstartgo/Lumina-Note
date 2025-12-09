@@ -14,6 +14,7 @@ import {
 } from "@/lib/ai";
 import { readFile } from "@/lib/tauri";
 import { callLLMStream, type ImageContent, type TextContent, type MessageContent } from "@/services/llm";
+import { getCurrentTranslations } from "@/stores/useLocaleStore";
 import { encryptApiKey, decryptApiKey } from "@/lib/crypto";
 import type { AttachedImage } from "@/components/chat/ChatInput";
 // 流式状态现在完全由 Zustand 管理，不再需要额外的 streamingStore
@@ -538,15 +539,13 @@ export const useAIStore = create<AIState>()(
             filesToSend = [currentFile];
           }
 
-          // Build messages with context
-          const basePrompt = `你是一个灵感与写作建议助手。
-你的主要目标是激发用户的创造力，提供写作角度、结构优化建议和内容润色方案。
-请专注于提供思路、大纲、修辞建议或具体的段落示例，而不是直接执行文件操作。
-当用户询问或卡顿时，请提供建设性的反馈、启发性的问题或相关的灵感素材。
-请始终使用与用户消息相同的语言进行回复。`;
+          // Build messages with context - 使用国际化提示词
+          const t = getCurrentTranslations();
+          const chatPrompt = t.prompts.chat;
+          const basePrompt = chatPrompt.system;
           
           const systemMessage = filesToSend.length > 0
-            ? `${basePrompt}\n\n当前上下文文件：\n\n${filesToSend.map(f => 
+            ? `${basePrompt}\n\n${chatPrompt.contextFiles}\n\n${filesToSend.map(f => 
                 `### ${f.name}\n\`\`\`\n${f.content}\n\`\`\``
               ).join("\n\n")}`
             : basePrompt;

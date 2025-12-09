@@ -138,12 +138,6 @@ export async function chat(
   configOverride?: Partial<LLMConfig>,
   options?: { intent?: IntentType }
 ): Promise<ChatResponse> {
-  console.log('[AI Debug] chat() called', {
-    messagesCount: messages.length,
-    filesCount: files.length,
-    intent: options?.intent
-  });
-
   const systemPrompt = buildSystemPrompt(files, options?.intent);
   
   // 构建完整消息列表
@@ -152,16 +146,9 @@ export async function chat(
     ...messages,
   ];
 
-  console.log('[AI Debug] Calling callLLM with', fullMessages.length, 'messages');
-
   try {
     // 使用统一的 LLM 服务
     const response = await callLLM(fullMessages, undefined, configOverride);
-
-    console.log('[AI Debug] callLLM response:', {
-      contentLength: response.content?.length || 0,
-      hasUsage: !!response.usage,
-    });
 
     return {
       content: response.content,
